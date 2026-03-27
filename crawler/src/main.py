@@ -1,7 +1,8 @@
 from api_client import fetch_weather_data
 from kafka_producer import send_to_kafka
 
-KAFKA_TOPIC = 'raw_weather'
+
+KAFKA_TOPIC = 'raw_weather_data'
 LOCATIONS = ['Hanoi, VN', 'HoChiMinh, VN']
 
 def run_crawler():
