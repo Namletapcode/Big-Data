@@ -26,9 +26,17 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     mem_limit: 768m
     cpus: 0.8
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   crawler:
     build: ../crawler
     container_name: crawler
-    depends_on: [kafka]
+    depends_on:
+      kafka:
+        condition: service_healthy
     networks: [bigdata-net]
