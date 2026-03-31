@@ -40,3 +40,43 @@ services:
       kafka:
         condition: service_healthy
     networks: [bigdata-net]
+    env_file:
+      - ../crawler/env
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: elasticsearch
+    networks: [bigdata-net]
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false 
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    mem_limit: 1g
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.1
+    container_name: kibana
+    networks: [bigdata-net]
+    depends_on: [elasticsearch]
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    mem_limit: 1g
+
+  speed_layer:
+    build: ../speed
+    container_name: spark_speed_layer
+    depends_on:
+      kafka:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_started
+    networks: [bigdata-net]
+    restart: always
+    environment:
+      - KAFKA_BOOTSTRAP=kafka:9092
+      - KAFKA_TOPIC=raw_weather_data
+      - ES_HOST=elasticsearch  
