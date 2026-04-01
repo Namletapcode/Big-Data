@@ -12,9 +12,6 @@ app = FastAPI(title="Weather Serving Layer", version="1.0.0")
 
 
 def get_es_client() -> Elasticsearch:
-    """
-    Tạo Elasticsearch client với header compatible-with=8 để phù hợp ES 8.x.
-    """
     return Elasticsearch(
         ES_HOST,
         headers={
@@ -26,9 +23,6 @@ def get_es_client() -> Elasticsearch:
 
 @app.get("/health")
 def health_check() -> Dict[str, Any]:
-    """
-    Simple health check endpoint for the serving API.
-    """
     es = get_es_client()
     try:
         info = es.info()
@@ -68,7 +62,6 @@ def get_latest_weather(
             body={
                 "size": 1,
                 "query": query,
-                # Local_Time là text nên sort theo subfield keyword
                 "sort": [{"Local_Time.keyword": {"order": "desc"}}],
             },
         )
@@ -92,9 +85,6 @@ def get_weather_history(
         description="Số bản ghi lịch sử tối đa cần trả về",
     ),
 ) -> List[Dict[str, Any]]:
-    """
-    Trả về lịch sử thời tiết gần nhất cho một location, sắp xếp mới → cũ.
-    """
     es = get_es_client()
     query = build_location_query(location)
 
@@ -116,9 +106,6 @@ def get_weather_history(
 
 @app.get("/weather/locations")
 def list_locations(limit: int = Query(20, ge=1, le=100)) -> List[str]:
-    """
-    Liệt kê một số location khác nhau có trong index, phục vụ dropdown trong UI.
-    """
     es = get_es_client()
     try:
         resp = es.search(
