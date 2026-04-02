@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Thời tiết realtime</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="app-header">
+        <h1>Weather Realtime Dashboard</h1>
+        <p>Data từ Visual Crossing → Kafka → Spark → Elasticsearch → FastAPI</p>
+      </header>
+
+      <main class="app-main">
+        <section class="card">
+          <div class="form-row">
+            <label for="location">Chọn địa điểm</label>
+            <select id="location">
+              {% if locations %}
+              {% for loc in locations %}
+              <option value="{{ loc }}">{{ loc }}</option>
+              {% endfor %}
+              {% else %}
+              <option value="">(Chưa có dữ liệu - đợi pipeline chạy)</option>
+              {% endif %}
+            </select>
+            <button id="refresh-btn">Lấy thời tiết mới nhất</button>
+          </div>
+
+          <div id="status" class="status"></div>
+
+          <div id="weather-card" class="weather-card hidden">
+            <h2 id="w-location"></h2>
+            <p id="w-time" class="sub"></p>
+
+            <div class="weather-main">
+              <div class="temp-block">
+                <span id="w-temp" class="temp"></span>
+                <span id="w-feels" class="feels"></span>
+              </div>
+              <div class="cond-block">
+                <span id="w-cond" class="cond"></span>
+                <span id="w-uv" class="badge"></span>
+              </div>
+            </div>
+
+            <div class="weather-grid">
+              <div class="item">
+                <span class="label">Độ ẩm</span>
+                <span id="w-humidity" class="value"></span>
+              </div>
+              <div class="item">
+                <span class="label">Mưa</span>
+                <span id="w-precip" class="value"></span>
+              </div>
+              <div class="item">
+                <span class="label">Gió</span>
+                <span id="w-wind" class="value"></span>
+              </div>
+              <div class="item">
+                <span class="label">Áp suất</span>
+                <span id="w-pressure" class="value"></span>
+              </div>
+              <div class="item">
+                <span class="label">Mây che phủ</span>
+                <span id="w-cloud" class="value"></span>
+              </div>
+              <div class="item">
+                <span class="label">Tầm nhìn</span>
+                <span id="w-visibility" class="value"></span>
+              </div>
+            </div>
+
+            <div class="sun-row">
+              <div>
+                <span class="label">Mặt trời mọc</span>
+                <span id="w-sunrise" class="value"></span>
+              </div>
+              <div>
+                <span class="label">Mặt trời lặn</span>
+                <span id="w-sunset" class="value"></span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="app-footer">
+        <span>Big Data project - Lambda Architecture · Speed + Serving layer</span>
+      </footer>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      async function fetchLatest() {
+        const loc = $("location").value;
+        if (!loc) {
+          $("status").textContent = "Chưa có location nào. Hãy đợi crawler + Spark chạy.";
+          $("status").className = "status status-warn";
+          return;
+        }
+
+        $("status").textContent = "Đang tải dữ liệu...";
+        $("status").className = "status status-info";
+
+        try {
+          const params = new URLSearchParams({ location: loc });
+          const res = await fetch(`/api/weather/latest?${params.toString()}`);
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || res.statusText);
+          }
+          const data = await res.json();
+          renderWeather(data);
+          $("status").textContent = "Đã tải dữ liệu mới nhất.";
+          $("status").className = "status status-ok";
+        } catch (e) {
+          $("status").textContent = "Lỗi khi lấy dữ liệu: " + e.message;
+          $("status").className = "status status-error";
+        }
+      }
+
+      function renderWeather(d) {
+        $("weather-card").classList.remove("hidden");
+        $("w-location").textContent = d.Location || "N/A";
+        $("w-time").textContent = "Local time: " + (d.Local_Time || "N/A");
+
+        $("w-temp").textContent = (d.Temp_C != null ? d.Temp_C.toFixed(1) : "?") + " °C";
+        $("w-feels").textContent =
+          "Cảm giác như: " +
+          (d.Feels_Like != null ? d.Feels_Like.toFixed(1) + " °C" : "N/A");
+
+        $("w-cond").textContent = d.Conditions || "N/A";
+        $("w-uv").textContent = "UV " + (d.UV_Index != null ? d.UV_Index : "?");
+
+        const humidity = d["Humidity_%"];
+        $("w-humidity").textContent = (humidity != null ? humidity : "?") + " %";
+        $("w-precip").textContent =
+          (d.Precip_mm != null ? d.Precip_mm : "?") + " mm";
+        $("w-wind").textContent =
+          (d.Wind_Speed != null ? d.Wind_Speed : "?") +
+          " km/h" +
+          (d.Wind_Dir != null ? " · hướng " + d.Wind_Dir + "°" : "");
+        $("w-pressure").textContent =
+          (d.Pressure_hPa != null ? d.Pressure_hPa : "?") + " hPa";
+        const cloudCover = d["Cloud_Cover_%"];
+        $("w-cloud").textContent = (cloudCover != null ? cloudCover : "?") + " %";
+        $("w-visibility").textContent =
+          (d.Visibility_km != null ? d.Visibility_km : "?") + " km";
+
+        $("w-sunrise").textContent = d.Sunrise || "N/A";
+        $("w-sunset").textContent = d.Sunset || "N/A";
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        $("refresh-btn").addEventListener("click", fetchLatest);
+        if ($("location").value) {
+          fetchLatest();
+        }
+      });
+    </script>
+  </body>
+</html>
+

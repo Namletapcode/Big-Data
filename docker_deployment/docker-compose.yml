@@ -80,3 +80,17 @@ services:
       - KAFKA_BOOTSTRAP=kafka:9092
       - KAFKA_TOPIC=raw_weather_data
       - ES_HOST=elasticsearch  
+
+  serving_api:
+    build: ../serving
+    container_name: serving_api
+    depends_on:
+      elasticsearch:
+        condition: service_started
+    networks: [bigdata-net]
+    restart: always
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+      - ES_INDEX=weather_realtime
+    ports:
+      - "8000:8000"

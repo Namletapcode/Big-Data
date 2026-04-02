@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+elasticsearch==8.11.1
+jinja2
