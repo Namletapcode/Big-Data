@@ -5,25 +5,34 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_KEY = os.getenv('VISUAL_CROSSING_API_KEY')
+API_KEY_LIST = iter(os.getenv('VISUAL_CROSSING_API_KEY_LIST').split(','))
 BASE_URL = 'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline'
+
+params = {
+    'unitGroup': 'metric',
+    'key': next(API_KEY_LIST),
+    'contentType': 'json'
+}
 
 def fetch_weather_data(location):
     url = f'{BASE_URL}/{location}'
-    params = {
-        'unitGroup': 'metric',
-        'key': API_KEY,
-        'contentType': 'json'
-    }
 
     try:
-        response = requests.get(url=url, params=params, timeout=(3, 10))
-        response.raise_for_status()
+        while True:
+            response = requests.get(url=url, params=params, timeout=(3, 10))
 
-        return response.json()
-    
+            if response.status_code in [401, 429]:
+                params['key'] = next(API_KEY_LIST)
+                continue
+
+            response.raise_for_status()
+            return response.json()
+
+    except StopIteration:
+        print(f'Đã sử dụng hết key')
+
     except Exception as e:
-        print(f'Lỗi khi lấy dữ liệu: {e}')
+        print(f'Lỗi khi lấy dữ liệu {location}: {e}')
 
 
 if __name__ == "__main__":

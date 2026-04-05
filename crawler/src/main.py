@@ -14,7 +14,9 @@ def run_crawler():
             send_to_kafka(KAFKA_TOPIC, weather_data)
 
         else:
-            print(f'Không lấy được dữ liệu của {location}')
+            return False
+        
+    return True
 
 if __name__ == "__main__":
     print('Khởi động Weather Crawler...')
