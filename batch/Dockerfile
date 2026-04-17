@@ -4,5 +4,5 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY *.jsonl ./
-COPY main.py ./
-CMD ["spark-submit", "--packages", "org.elasticsearch:elasticsearch-spark-30_2.12:8.11.1", "main.py"]
+COPY spark_batch.py ./
+CMD ["spark-submit", "--packages", "org.elasticsearch:elasticsearch-spark-30_2.12:8.11.1", "spark_batch.py"]
