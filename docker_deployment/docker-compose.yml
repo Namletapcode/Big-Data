@@ -81,6 +81,17 @@ services:
       - KAFKA_TOPIC=raw_weather_data
       - ES_HOST=elasticsearch  
 
+  batch_layer:
+    build: ../batch
+    container_name: spark_batch_layer
+    depends_on:
+      elasticsearch:
+        condition: service_started
+    networks: [bigdata-net]
+    restart: always
+    environment:
+      - ES_HOST=elasticsearch
+
   serving_api:
     build: ../serving
     container_name: serving_api
