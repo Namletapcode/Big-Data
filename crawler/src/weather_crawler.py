@@ -1,9 +1,18 @@
-from api_client import fetch_weather_data
+import os
+import json
+from weather_fetcher import fetch_weather_data
 from kafka_producer import send_to_kafka
 
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOCATIONS_FILE = os.path.join(BASE_DIR, 'configs', 'locations.json')
+
 KAFKA_TOPIC = 'raw_weather_data'
-LOCATIONS = ['Hanoi, VN', 'HoChiMinh, VN']
+
+with open(LOCATIONS_FILE, 'r', encoding='utf-8') as file:
+    data = json.load(file)
+
+LOCATIONS = [f'{item['latitude']},{item['longitude']}' for item in data]
 
 def run_crawler():
     for location in LOCATIONS:
@@ -14,10 +23,11 @@ def run_crawler():
             send_to_kafka(KAFKA_TOPIC, weather_data)
 
         else:
-            return False
+            continue
         
     return True
 
 if __name__ == "__main__":
     print('Khởi động Weather Crawler...')
     run_crawler()
+    print('Đã tắt Weather Crawler')
