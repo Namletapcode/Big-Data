@@ -3,7 +3,6 @@ import requests
 import json
 import time
 from dotenv import load_dotenv
-from geopy.geocoders import Nominatim
 
 
 load_dotenv()
@@ -25,47 +24,20 @@ def fetch_province_data(country_codes):
         response = None
 
         try:
-            if code == 'VN':
-                url = 'https://provinces.open-api.vn/api/?depth=1'
-                geolocator = Nominatim(user_agent='province_crawler')
+            url = f'{BASE_URL}/{code}/states'
 
-                response = requests.get(url=url)
-                response.raise_for_status()
+            response = requests.get(url=url, headers=headers)
+            response.raise_for_status()
 
-                provinces = response.json()
+            provinces = response.json()
 
-                for province in provinces:
-                    name = f'{province['name']}, Việt Nam'
-                    location = geolocator.geocode(name, timeout=5)
-
-                    if not location:
-                        print(f'Không lấy được dữ liệu địa lý {name}')
-                        continue
-
-                    locations_data.append({
-                        'country_code': code,
-                        'name': name,
-                        'latitude': location.latitude,
-                        'longitude': location.longitude
-                    })
-
-                    time.sleep(2)
-
-            else:
-                url = f'{BASE_URL}/{code}/states'
-
-                response = requests.get(url=url, headers=headers)
-                response.raise_for_status()
-
-                provinces = response.json()
-
-                for province in provinces:
-                    locations_data.append({
-                        'country_code': code,
-                        'name': province['name'],
-                        'latitude': province['latitude'],
-                        'longitude': province['longitude']
-                    })
+            for province in provinces:
+                locations_data.append({
+                    'country_code': code,
+                    'name': province['name'],
+                    'latitude': province['latitude'],
+                    'longitude': province['longitude']
+                })
                     
         except Exception as e:
             print(f'Lỗi khi lấy dữ liệu {code}: {e}')
