@@ -1,0 +1,380 @@
+[
+    {
+        "country_code": "VN",
+        "name": "Thành phố Hà Nội, Việt Nam",
+        "latitude": 21.0283334,
+        "longitude": 105.854041
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Hà Giang, Việt Nam",
+        "latitude": 22.7792173,
+        "longitude": 104.959767
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Cao Bằng, Việt Nam",
+        "latitude": 22.7426936,
+        "longitude": 106.1060926
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Bắc Kạn, Việt Nam",
+        "latitude": 22.2728552,
+        "longitude": 105.8564601
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Tuyên Quang, Việt Nam",
+        "latitude": 22.3382057,
+        "longitude": 105.0715846
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Lào Cai, Việt Nam",
+        "latitude": 22.3069302,
+        "longitude": 104.1829592
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Điện Biên, Việt Nam",
+        "latitude": 21.6546566,
+        "longitude": 103.2168632
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Lai Châu, Việt Nam",
+        "latitude": 22.2921668,
+        "longitude": 103.1798662
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Sơn La, Việt Nam",
+        "latitude": 21.2276769,
+        "longitude": 104.1575944
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Yên Bái, Việt Nam",
+        "latitude": 21.8091042,
+        "longitude": 104.5182832
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Hoà Bình, Việt Nam",
+        "latitude": 20.7090533,
+        "longitude": 105.2576439
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Thái Nguyên, Việt Nam",
+        "latitude": 21.9610968,
+        "longitude": 105.8440789
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Lạng Sơn, Việt Nam",
+        "latitude": 21.8487579,
+        "longitude": 106.6140692
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Quảng Ninh, Việt Nam",
+        "latitude": 21.1718046,
+        "longitude": 107.2012742
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Bắc Giang, Việt Nam",
+        "latitude": 21.3740092,
+        "longitude": 106.4663176
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Phú Thọ, Việt Nam",
+        "latitude": 21.3007538,
+        "longitude": 105.1349604
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Vĩnh Phúc, Việt Nam",
+        "latitude": 21.3647247,
+        "longitude": 105.5836703
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Bắc Ninh, Việt Nam",
+        "latitude": 21.3282166,
+        "longitude": 106.4625257
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Hải Dương, Việt Nam",
+        "latitude": 20.9602884,
+        "longitude": 106.3604393
+    },
+    {
+        "country_code": "VN",
+        "name": "Thành phố Hải Phòng, Việt Nam",
+        "latitude": 20.8623278,
+        "longitude": 106.6799266
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Hưng Yên, Việt Nam",
+        "latitude": 20.6065846,
+        "longitude": 106.2843471
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Thái Bình, Việt Nam",
+        "latitude": 20.4031348,
+        "longitude": 106.5941615
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Hà Nam, Việt Nam",
+        "latitude": 20.5340294,
+        "longitude": 105.9810248
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Nam Định, Việt Nam",
+        "latitude": 19.9952624,
+        "longitude": 106.485807
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Ninh Bình, Việt Nam",
+        "latitude": 20.2867258,
+        "longitude": 106.1000359
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Thanh Hóa, Việt Nam",
+        "latitude": 19.9781573,
+        "longitude": 105.4816107
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Nghệ An, Việt Nam",
+        "latitude": 19.1976001,
+        "longitude": 105.060676
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Hà Tĩnh, Việt Nam",
+        "latitude": 18.3504832,
+        "longitude": 105.7623047
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Quảng Bình, Việt Nam",
+        "latitude": 17.5157162,
+        "longitude": 106.6225405
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Quảng Trị, Việt Nam",
+        "latitude": 17.2166964,
+        "longitude": 106.9548246
+    },
+    {
+        "country_code": "VN",
+        "name": "Thành phố Huế, Việt Nam",
+        "latitude": 16.4639321,
+        "longitude": 107.5863388
+    },
+    {
+        "country_code": "VN",
+        "name": "Thành phố Đà Nẵng, Việt Nam",
+        "latitude": 16.068,
+        "longitude": 108.212
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Quảng Nam, Việt Nam",
+        "latitude": 15.5587908,
+        "longitude": 108.109299
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Quảng Ngãi, Việt Nam",
+        "latitude": 14.9953739,
+        "longitude": 108.691729
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Bình Định, Việt Nam",
+        "latitude": 14.1086959,
+        "longitude": 109.1145897
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Phú Yên, Việt Nam",
+        "latitude": 13.1998999,
+        "longitude": 109.2390033
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Khánh Hòa, Việt Nam",
+        "latitude": 12.2980751,
+        "longitude": 108.9950386
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Ninh Thuận, Việt Nam",
+        "latitude": 11.4639176,
+        "longitude": 109.1316501
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Bình Thuận, Việt Nam",
+        "latitude": 10.4398768,
+        "longitude": 108.5137429
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Kon Tum, Việt Nam",
+        "latitude": 14.6699512,
+        "longitude": 108.0288466
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Gia Lai, Việt Nam",
+        "latitude": 14.0201373,
+        "longitude": 108.6354524
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Đắk Lắk, Việt Nam",
+        "latitude": 12.8741856,
+        "longitude": 108.7979302
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Đắk Nông, Việt Nam",
+        "latitude": 12.2807367,
+        "longitude": 107.742636
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Lâm Đồng, Việt Nam",
+        "latitude": 11.6614957,
+        "longitude": 108.1335279
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Bình Phước, Việt Nam",
+        "latitude": 11.8000378,
+        "longitude": 106.9151381
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Tây Ninh, Việt Nam",
+        "latitude": 11.0800527,
+        "longitude": 106.2610531
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Bình Dương, Việt Nam",
+        "latitude": 11.1826157,
+        "longitude": 106.6738179
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Đồng Nai, Việt Nam",
+        "latitude": 11.0806241,
+        "longitude": 107.1873919
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Bà Rịa - Vũng Tàu, Việt Nam",
+        "latitude": 9.7836158,
+        "longitude": 107.539162
+    },
+    {
+        "country_code": "VN",
+        "name": "Thành phố Hồ Chí Minh, Việt Nam",
+        "latitude": 10.7755254,
+        "longitude": 106.7021047
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Long An, Việt Nam",
+        "latitude": 10.7119482,
+        "longitude": 106.1257781
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Tiền Giang, Việt Nam",
+        "latitude": 10.3647275,
+        "longitude": 106.3208157
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Bến Tre, Việt Nam",
+        "latitude": 9.8837431,
+        "longitude": 106.7340154
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Trà Vinh, Việt Nam",
+        "latitude": 9.5815192,
+        "longitude": 106.5306792
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Vĩnh Long, Việt Nam",
+        "latitude": 10.046765,
+        "longitude": 106.2947443
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Đồng Tháp, Việt Nam",
+        "latitude": 10.425183,
+        "longitude": 105.9271362
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh An Giang, Việt Nam",
+        "latitude": 10.3188672,
+        "longitude": 105.0432488
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Kiên Giang, Việt Nam",
+        "latitude": 9.7667502,
+        "longitude": 104.4726437
+    },
+    {
+        "country_code": "VN",
+        "name": "Thành phố Cần Thơ, Việt Nam",
+        "latitude": 10.0362046,
+        "longitude": 105.7872656
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Hậu Giang, Việt Nam",
+        "latitude": 9.7881262,
+        "longitude": 105.6390398
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Sóc Trăng, Việt Nam",
+        "latitude": 9.3203771,
+        "longitude": 106.1059371
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Bạc Liêu, Việt Nam",
+        "latitude": 8.8961366,
+        "longitude": 105.6969598
+    },
+    {
+        "country_code": "VN",
+        "name": "Tỉnh Cà Mau, Việt Nam",
+        "latitude": 9.0180177,
+        "longitude": 105.0869724
+    }
+]

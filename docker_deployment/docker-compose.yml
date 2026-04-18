@@ -40,8 +40,6 @@ services:
       kafka:
         condition: service_healthy
     networks: [bigdata-net]
-    env_file:
-      - ../crawler/env
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
