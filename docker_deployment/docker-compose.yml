@@ -42,6 +42,8 @@ services:
     networks: [bigdata-net]
     volumes:
       - ../data_lake:/data_lake
+    env_file:
+      - ../crawler/env
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
