@@ -3,7 +3,7 @@ name: Spark Batch CI/CD
 on:
   push:
     branches:
-      - main
+      - cloud
     # Chỉ trigger CI/CD khi có thay đổi code trong thư mục spark
     paths:
       - 'crawler/**' 
