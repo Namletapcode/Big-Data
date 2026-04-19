@@ -2,85 +2,254 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <title>Thời tiết realtime</title>
+    <title>Weather Dashboard – Lambda Architecture</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Dashboard thời tiết real-time và lịch sử theo kiến trúc Lambda – Big Data project" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   </head>
   <body>
     <div class="app">
+      <!-- HEADER -->
       <header class="app-header">
-        <h1>Weather Realtime Dashboard</h1>
-        <p>Data từ Visual Crossing → Kafka → Spark → Elasticsearch → FastAPI</p>
-      </header>
-
-      <main class="app-main">
-        <section class="card">
-          <div class="form-row">
-            <label for="location">Chọn địa điểm</label>
-            <select id="location">
+        <div class="header-inner">
+          <div class="header-logo">
+            <span class="logo-icon">🌤</span>
+            <div>
+              <h1>Weather Dashboard</h1>
+              <p class="header-sub">Lambda Architecture · Visual Crossing → Kafka → Spark → Elasticsearch</p>
+            </div>
+          </div>
+          <div class="header-controls">
+            <label for="location-global" class="sr-only">Chọn địa điểm</label>
+            <select id="location-global">
               {% if locations %}
               {% for loc in locations %}
               <option value="{{ loc }}">{{ loc }}</option>
               {% endfor %}
               {% else %}
-              <option value="">(Chưa có dữ liệu - đợi pipeline chạy)</option>
+              <option value="">(Chưa có dữ liệu)</option>
               {% endif %}
             </select>
-            <button id="refresh-btn">Lấy thời tiết mới nhất</button>
+            <button id="refresh-all-btn">🔄 Cập nhật</button>
           </div>
+        </div>
+      </header>
 
-          <div id="status" class="status"></div>
+      <!-- TAB NAV -->
+      <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="realtime">⚡ Real-time</button>
+        <button class="tab-btn" data-tab="history">📈 Lịch sử</button>
+        <button class="tab-btn" data-tab="batch">🗄️ Batch Summary</button>
+      </nav>
 
+      <main class="app-main">
+        <div id="global-status" class="status"></div>
+
+        <!-- ===== TAB: REAL-TIME ===== -->
+        <section id="tab-realtime" class="tab-panel active">
           <div id="weather-card" class="weather-card hidden">
-            <h2 id="w-location"></h2>
-            <p id="w-time" class="sub"></p>
-
-            <div class="weather-main">
-              <div class="temp-block">
-                <span id="w-temp" class="temp"></span>
-                <span id="w-feels" class="feels"></span>
+            <div class="wcard-hero">
+              <div class="wcard-left">
+                <div class="wcard-icon" id="w-icon-emoji">🌡</div>
+                <div>
+                  <h2 id="w-location"></h2>
+                  <p id="w-time" class="sub"></p>
+                </div>
               </div>
-              <div class="cond-block">
-                <span id="w-cond" class="cond"></span>
-                <span id="w-uv" class="badge"></span>
+              <div class="wcard-right">
+                <span id="w-temp" class="temp-big"></span>
+                <span id="w-feels" class="feels-text"></span>
+                <span id="w-cond" class="cond-text"></span>
+                <span id="w-uv" class="badge-uv"></span>
               </div>
             </div>
 
             <div class="weather-grid">
-              <div class="item">
-                <span class="label">Độ ẩm</span>
-                <span id="w-humidity" class="value"></span>
+              <div class="grid-item">
+                <span class="gi-label">💧 Độ ẩm</span>
+                <span id="w-humidity" class="gi-val"></span>
               </div>
-              <div class="item">
-                <span class="label">Mưa</span>
-                <span id="w-precip" class="value"></span>
+              <div class="grid-item">
+                <span class="gi-label">🌧 Lượng mưa</span>
+                <span id="w-precip" class="gi-val"></span>
               </div>
-              <div class="item">
-                <span class="label">Gió</span>
-                <span id="w-wind" class="value"></span>
+              <div class="grid-item">
+                <span class="gi-label">💨 Gió</span>
+                <span id="w-wind" class="gi-val"></span>
               </div>
-              <div class="item">
-                <span class="label">Áp suất</span>
-                <span id="w-pressure" class="value"></span>
+              <div class="grid-item">
+                <span class="gi-label">🌡 Áp suất</span>
+                <span id="w-pressure" class="gi-val"></span>
               </div>
-              <div class="item">
-                <span class="label">Mây che phủ</span>
-                <span id="w-cloud" class="value"></span>
+              <div class="grid-item">
+                <span class="gi-label">☁️ Mây</span>
+                <span id="w-cloud" class="gi-val"></span>
               </div>
-              <div class="item">
-                <span class="label">Tầm nhìn</span>
-                <span id="w-visibility" class="value"></span>
+              <div class="grid-item">
+                <span class="gi-label">👁 Tầm nhìn</span>
+                <span id="w-visibility" class="gi-val"></span>
+              </div>
+              <div class="grid-item">
+                <span class="gi-label">🔆 UV Index</span>
+                <span id="w-uv2" class="gi-val"></span>
+              </div>
+              <div class="grid-item">
+                <span class="gi-label">🌊 Điểm sương</span>
+                <span id="w-dew" class="gi-val"></span>
               </div>
             </div>
 
             <div class="sun-row">
-              <div>
-                <span class="label">Mặt trời mọc</span>
-                <span id="w-sunrise" class="value"></span>
+              <div class="sun-item">
+                <span class="sun-label">🌅 Mặt trời mọc</span>
+                <span id="w-sunrise" class="sun-val"></span>
               </div>
-              <div>
-                <span class="label">Mặt trời lặn</span>
-                <span id="w-sunset" class="value"></span>
+              <div class="sun-item">
+                <span class="sun-label">🌇 Mặt trời lặn</span>
+                <span id="w-sunset" class="sun-val"></span>
+              </div>
+              <div class="sun-item">
+                <span class="sun-label">🌙 Pha mặt trăng</span>
+                <span id="w-moon" class="sun-val"></span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== TAB: HISTORY ===== -->
+        <section id="tab-history" class="tab-panel hidden">
+          <div class="history-controls">
+            <label for="history-limit">Số ngày hiển thị:</label>
+            <select id="history-limit">
+              <option value="30">30 bản ghi</option>
+              <option value="50" selected>50 bản ghi</option>
+              <option value="100">100 bản ghi</option>
+              <option value="200">200 bản ghi</option>
+            </select>
+            <button id="load-history-btn">📊 Tải dữ liệu lịch sử</button>
+          </div>
+
+          <div id="history-status" class="status"></div>
+
+          <div id="history-charts" class="charts-grid hidden">
+            <!-- Temperature chart -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <span class="chart-title">🌡 Nhiệt độ theo thời gian (°C)</span>
+                <span class="chart-badge temp-badge">Real-time</span>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="chart-temp"></canvas>
+              </div>
+            </div>
+
+            <!-- Humidity chart -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <span class="chart-title">💧 Độ ẩm (%)</span>
+                <span class="chart-badge humidity-badge">Real-time</span>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="chart-humidity"></canvas>
+              </div>
+            </div>
+
+            <!-- Wind chart -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <span class="chart-title">💨 Tốc độ gió (km/h)</span>
+                <span class="chart-badge wind-badge">Real-time</span>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="chart-wind"></canvas>
+              </div>
+            </div>
+
+            <!-- Precipitation chart -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <span class="chart-title">🌧 Lượng mưa (mm)</span>
+                <span class="chart-badge precip-badge">Real-time</span>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="chart-precip"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Batch Daily Table -->
+          <div id="batch-daily-section" class="batch-table-section hidden">
+            <h3 class="section-title">📅 Dữ liệu tổng hợp theo ngày (Batch Layer)</h3>
+            <div class="charts-grid">
+              <div class="chart-card span-2">
+                <div class="chart-header">
+                  <span class="chart-title">🌡 Nhiệt độ TB/Min/Max theo ngày</span>
+                  <span class="chart-badge batch-badge">Batch</span>
+                </div>
+                <div class="chart-wrap">
+                  <canvas id="chart-batch-temp"></canvas>
+                </div>
+              </div>
+              <div class="chart-card">
+                <div class="chart-header">
+                  <span class="chart-title">💧 Độ ẩm TB theo ngày (%)</span>
+                  <span class="chart-badge batch-badge">Batch</span>
+                </div>
+                <div class="chart-wrap">
+                  <canvas id="chart-batch-humidity"></canvas>
+                </div>
+              </div>
+              <div class="chart-card">
+                <div class="chart-header">
+                  <span class="chart-title">🌧 Tổng lượng mưa theo ngày (mm)</span>
+                  <span class="chart-badge batch-badge">Batch</span>
+                </div>
+                <div class="chart-wrap">
+                  <canvas id="chart-batch-precip"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== TAB: BATCH SUMMARY ===== -->
+        <section id="tab-batch" class="tab-panel hidden">
+          <div id="batch-status" class="status"></div>
+          <div id="batch-summary-card" class="summary-card hidden">
+            <div class="summary-header">
+              <h2 id="bs-location"></h2>
+              <span class="summary-label">Thống kê lịch sử từ Batch Layer</span>
+            </div>
+
+            <div class="summary-grid">
+              <div class="summary-item hot">
+                <span class="si-icon">🔥</span>
+                <span class="si-label">Ngày nóng nhất</span>
+                <span id="bs-hottest-date" class="si-val"></span>
+                <span id="bs-hottest-temp" class="si-big"></span>
+              </div>
+              <div class="summary-item cold">
+                <span class="si-icon">❄️</span>
+                <span class="si-label">Ngày lạnh nhất</span>
+                <span id="bs-coldest-date" class="si-val"></span>
+                <span id="bs-coldest-temp" class="si-big"></span>
+              </div>
+              <div class="summary-item latest">
+                <span class="si-icon">📅</span>
+                <span class="si-label">Dữ liệu mới nhất</span>
+                <span id="bs-latest-date" class="si-val"></span>
+                <span id="bs-latest-temp" class="si-big"></span>
+              </div>
+              <div class="summary-item heatwave">
+                <span class="si-icon">🌊</span>
+                <span class="si-label">Đợt nóng dài nhất</span>
+                <span id="bs-heatwave-days" class="si-big"></span>
+                <span id="bs-heatwave-range" class="si-val"></span>
+                <span id="bs-heatwave-max" class="si-sub"></span>
               </div>
             </div>
           </div>
@@ -88,80 +257,449 @@
       </main>
 
       <footer class="app-footer">
-        <span>Big Data project - Lambda Architecture · Speed + Serving layer</span>
+        <span>Big Data Project · Lambda Architecture · Speed Layer + Batch Layer + Serving Layer</span>
       </footer>
     </div>
 
     <script>
+      /* ============================================================
+         UTILITIES
+      ============================================================ */
       const $ = (id) => document.getElementById(id);
+      const fmt = (v, unit = "", digits = 1) =>
+        v != null ? v.toFixed(digits) + " " + unit : "N/A";
+      const fmtInt = (v, unit = "") => (v != null ? Math.round(v) + " " + unit : "N/A");
 
-      async function fetchLatest() {
-        const loc = $("location").value;
-        if (!loc) {
-          $("status").textContent = "Chưa có location nào. Hãy đợi crawler + Spark chạy.";
-          $("status").className = "status status-warn";
-          return;
-        }
+      let chartTemp, chartHumidity, chartWind, chartPrecip;
+      let chartBatchTemp, chartBatchHumidity, chartBatchPrecip;
 
-        $("status").textContent = "Đang tải dữ liệu...";
-        $("status").className = "status status-info";
+      /* ============================================================
+         TABS
+      ============================================================ */
+      document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+          document.querySelectorAll(".tab-panel").forEach((p) => {
+            p.classList.remove("active");
+            p.classList.add("hidden");
+          });
+          btn.classList.add("active");
+          const panel = $("tab-" + btn.dataset.tab);
+          panel.classList.remove("hidden");
+          panel.classList.add("active");
+        });
+      });
 
+      /* ============================================================
+         GLOBAL: refresh all
+      ============================================================ */
+      $("refresh-all-btn").addEventListener("click", () => {
+        fetchRealtime();
+        fetchHistory();
+        fetchBatchSummary();
+      });
+
+      /* ============================================================
+         TAB 1: REAL-TIME
+      ============================================================ */
+      const ICON_MAP = {
+        "clear-day": "☀️", "clear-night": "🌙",
+        "partly-cloudy-day": "⛅", "partly-cloudy-night": "🌥",
+        "cloudy": "☁️", "rain": "🌧", "showers-day": "🌦",
+        "showers-night": "🌧", "thunder-rain": "⛈", "thunder": "⛈",
+        "fog": "🌫", "wind": "💨", "snow": "❄️", "hail": "🌨",
+      };
+
+      async function fetchRealtime() {
+        const loc = $("location-global").value;
+        if (!loc) return;
+        setStatus("global-status", "Đang tải real-time...", "info");
         try {
-          const params = new URLSearchParams({ location: loc });
-          const res = await fetch(`/api/weather/latest?${params.toString()}`);
-          if (!res.ok) {
+          const res = await fetch(`/api/weather/latest?${new URLSearchParams({ location: loc })}`);
+          if (res.status === 404) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || res.statusText);
+            // 404 = chưa có dữ liệu (index chưa tồn tại hoặc chưa có record)
+            setStatus("global-status", "⚠️ " + (err.detail || "Chưa có dữ liệu real-time. Crawler đang chờ API key."), "warn");
+            return;
           }
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
           const data = await res.json();
-          renderWeather(data);
-          $("status").textContent = "Đã tải dữ liệu mới nhất.";
-          $("status").className = "status status-ok";
+          renderRealtime(data);
+          setStatus("global-status", "✅ Cập nhật real-time thành công.", "ok");
         } catch (e) {
-          $("status").textContent = "Lỗi khi lấy dữ liệu: " + e.message;
-          $("status").className = "status status-error";
+          setStatus("global-status", "❌ Lỗi real-time: " + e.message, "error");
         }
       }
 
-      function renderWeather(d) {
+      function renderRealtime(d) {
         $("weather-card").classList.remove("hidden");
         $("w-location").textContent = d.Location || "N/A";
-        $("w-time").textContent = "Local time: " + (d.Local_Time || "N/A");
-
-        $("w-temp").textContent = (d.Temp_C != null ? d.Temp_C.toFixed(1) : "?") + " °C";
-        $("w-feels").textContent =
-          "Cảm giác như: " +
-          (d.Feels_Like != null ? d.Feels_Like.toFixed(1) + " °C" : "N/A");
-
+        $("w-time").textContent = "🕐 Cập nhật lúc: " + (d.Local_Time || "N/A");
+        $("w-temp").textContent = fmt(d.Temp_C, "°C");
+        $("w-feels").textContent = "Cảm giác: " + fmt(d.Feels_Like, "°C");
         $("w-cond").textContent = d.Conditions || "N/A";
-        $("w-uv").textContent = "UV " + (d.UV_Index != null ? d.UV_Index : "?");
+        $("w-uv").textContent = "UV " + (d.UV_Index ?? "?");
+        $("w-uv2").textContent = fmtInt(d.UV_Index);
+        $("w-icon-emoji").textContent = ICON_MAP[d.Icon] || "🌡";
 
         const humidity = d["Humidity_%"];
-        $("w-humidity").textContent = (humidity != null ? humidity : "?") + " %";
-        $("w-precip").textContent =
-          (d.Precip_mm != null ? d.Precip_mm : "?") + " mm";
+        $("w-humidity").textContent = fmtInt(humidity, "%");
+        $("w-precip").textContent = fmt(d.Precip_mm, "mm");
         $("w-wind").textContent =
-          (d.Wind_Speed != null ? d.Wind_Speed : "?") +
-          " km/h" +
-          (d.Wind_Dir != null ? " · hướng " + d.Wind_Dir + "°" : "");
-        $("w-pressure").textContent =
-          (d.Pressure_hPa != null ? d.Pressure_hPa : "?") + " hPa";
+          fmtInt(d.Wind_Speed, "km/h") + (d.Wind_Dir != null ? " · " + Math.round(d.Wind_Dir) + "°" : "");
+        $("w-pressure").textContent = fmtInt(d.Pressure_hPa, "hPa");
         const cloudCover = d["Cloud_Cover_%"];
-        $("w-cloud").textContent = (cloudCover != null ? cloudCover : "?") + " %";
-        $("w-visibility").textContent =
-          (d.Visibility_km != null ? d.Visibility_km : "?") + " km";
-
+        $("w-cloud").textContent = fmtInt(cloudCover, "%");
+        $("w-visibility").textContent = fmt(d.Visibility_km, "km");
+        $("w-dew").textContent = fmt(d.Dew_Point, "°C");
         $("w-sunrise").textContent = d.Sunrise || "N/A";
         $("w-sunset").textContent = d.Sunset || "N/A";
+        const moonPct = d.Moon_Phase != null ? Math.round(d.Moon_Phase * 100) + "%" : "N/A";
+        $("w-moon").textContent = moonPct;
       }
 
-      document.addEventListener("DOMContentLoaded", () => {
-        $("refresh-btn").addEventListener("click", fetchLatest);
-        if ($("location").value) {
-          fetchLatest();
+      /* ============================================================
+         TAB 2: HISTORY
+      ============================================================ */
+      $("load-history-btn").addEventListener("click", fetchHistory);
+
+      async function fetchHistory() {
+        const loc = $("location-global").value;
+        const limit = $("history-limit").value;
+        if (!loc) return;
+        setStatus("history-status", "Đang tải dữ liệu lịch sử...", "info");
+
+        // Fetch both realtime history and batch daily in parallel
+        const [rtResult, batchResult] = await Promise.allSettled([
+          fetch(`/api/weather/history?${new URLSearchParams({ location: loc, limit })}`).then(
+            (r) => (r.ok ? r.json() : Promise.reject(r.statusText))
+          ),
+          fetch(`/api/weather/batch/daily?${new URLSearchParams({ location: loc, limit: 100 })}`).then(
+            (r) => (r.ok ? r.json() : Promise.reject(r.statusText))
+          ),
+        ]);
+
+        let rtOk = false, batchOk = false;
+
+        if (rtResult.status === "fulfilled" && rtResult.value.length > 0) {
+          renderHistoryCharts(rtResult.value);
+          $("history-charts").classList.remove("hidden");
+          rtOk = true;
+        } else {
+          $("history-charts").classList.add("hidden");
         }
+
+        if (batchResult.status === "fulfilled" && batchResult.value.length > 0) {
+          renderBatchDailyCharts(batchResult.value);
+          $("batch-daily-section").classList.remove("hidden");
+          batchOk = true;
+        } else {
+          $("batch-daily-section").classList.add("hidden");
+        }
+
+        if (rtOk || batchOk) {
+          setStatus(
+            "history-status",
+            `✅ Đã tải ${rtOk ? rtResult.value.length + " bản ghi real-time" : ""}${rtOk && batchOk ? " · " : ""}${batchOk ? batchResult.value.length + " ngày batch" : ""}`,
+            "ok"
+          );
+        } else {
+          setStatus("history-status", "⚠️ Không có dữ liệu lịch sử cho địa điểm này.", "warn");
+        }
+      }
+
+      /* Chart.js default config */
+      const CHART_DEFAULTS = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { labels: { color: "#9ca3af", font: { family: "Inter", size: 11 } } },
+          tooltip: {
+            backgroundColor: "rgba(15,23,42,0.95)",
+            borderColor: "rgba(148,163,184,0.3)",
+            borderWidth: 1,
+            titleColor: "#e5e7eb",
+            bodyColor: "#9ca3af",
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: "#6b7280", font: { size: 10 }, maxTicksLimit: 12, maxRotation: 45 },
+            grid: { color: "rgba(148,163,184,0.08)" },
+          },
+          y: {
+            ticks: { color: "#6b7280", font: { size: 11 } },
+            grid: { color: "rgba(148,163,184,0.08)" },
+          },
+        },
+      };
+
+      function destroyChart(ref) {
+        if (ref) ref.destroy();
+        return null;
+      }
+
+      function renderHistoryCharts(records) {
+        // Sort ascending by time
+        records.sort((a, b) => (a.Local_Time > b.Local_Time ? 1 : -1));
+        const labels = records.map((r) => r.Local_Time || "");
+        const temps = records.map((r) => r.Temp_C);
+        const feelsLike = records.map((r) => r.Feels_Like);
+        const humidities = records.map((r) => r["Humidity_%"]);
+        const winds = records.map((r) => r.Wind_Speed);
+        const precips = records.map((r) => r.Precip_mm);
+
+        $("history-charts").classList.remove("hidden");
+
+        // TEMP
+        chartTemp = destroyChart(chartTemp);
+        chartTemp = new Chart($("chart-temp"), {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Nhiệt độ (°C)",
+                data: temps,
+                borderColor: "#f97316",
+                backgroundColor: "rgba(249,115,22,0.12)",
+                fill: true,
+                tension: 0.4,
+                pointRadius: 2,
+                borderWidth: 2,
+              },
+              {
+                label: "Cảm giác như (°C)",
+                data: feelsLike,
+                borderColor: "#fb923c",
+                borderDash: [6, 3],
+                backgroundColor: "transparent",
+                tension: 0.4,
+                pointRadius: 0,
+                borderWidth: 1.5,
+              },
+            ],
+          },
+          options: CHART_DEFAULTS,
+        });
+
+        // HUMIDITY
+        chartHumidity = destroyChart(chartHumidity);
+        chartHumidity = new Chart($("chart-humidity"), {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Độ ẩm (%)",
+                data: humidities,
+                borderColor: "#38bdf8",
+                backgroundColor: "rgba(56,189,248,0.12)",
+                fill: true,
+                tension: 0.4,
+                pointRadius: 2,
+                borderWidth: 2,
+              },
+            ],
+          },
+          options: { ...CHART_DEFAULTS, scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 100 } } },
+        });
+
+        // WIND
+        chartWind = destroyChart(chartWind);
+        chartWind = new Chart($("chart-wind"), {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Tốc độ gió (km/h)",
+                data: winds,
+                borderColor: "#a78bfa",
+                backgroundColor: "rgba(167,139,250,0.12)",
+                fill: true,
+                tension: 0.4,
+                pointRadius: 2,
+                borderWidth: 2,
+              },
+            ],
+          },
+          options: CHART_DEFAULTS,
+        });
+
+        // PRECIP
+        chartPrecip = destroyChart(chartPrecip);
+        chartPrecip = new Chart($("chart-precip"), {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Lượng mưa (mm)",
+                data: precips,
+                backgroundColor: "rgba(56,189,248,0.55)",
+                borderColor: "#38bdf8",
+                borderWidth: 1,
+                borderRadius: 4,
+              },
+            ],
+          },
+          options: CHART_DEFAULTS,
+        });
+      }
+
+      function renderBatchDailyCharts(records) {
+        records.sort((a, b) => (a.date > b.date ? 1 : -1));
+        const labels = records.map((r) => r.date || "");
+        const avgTemps = records.map((r) => r.avg_temp);
+        const minTemps = records.map((r) => r.min_temp);
+        const maxTemps = records.map((r) => r.max_temp);
+        const avgHumidities = records.map((r) => r.avg_humidity);
+        const totalPrecips = records.map((r) => r.total_precip);
+
+        $("batch-daily-section").classList.remove("hidden");
+
+        chartBatchTemp = destroyChart(chartBatchTemp);
+        chartBatchTemp = new Chart($("chart-batch-temp"), {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Nhiệt độ TB (°C)",
+                data: avgTemps,
+                borderColor: "#f97316",
+                backgroundColor: "rgba(249,115,22,0.15)",
+                fill: true,
+                tension: 0.4,
+                pointRadius: 3,
+                borderWidth: 2,
+              },
+              {
+                label: "Nhiệt độ Max (°C)",
+                data: maxTemps,
+                borderColor: "#ef4444",
+                backgroundColor: "transparent",
+                tension: 0.4,
+                pointRadius: 2,
+                borderWidth: 1.5,
+                borderDash: [4, 2],
+              },
+              {
+                label: "Nhiệt độ Min (°C)",
+                data: minTemps,
+                borderColor: "#60a5fa",
+                backgroundColor: "transparent",
+                tension: 0.4,
+                pointRadius: 2,
+                borderWidth: 1.5,
+                borderDash: [4, 2],
+              },
+            ],
+          },
+          options: CHART_DEFAULTS,
+        });
+
+        chartBatchHumidity = destroyChart(chartBatchHumidity);
+        chartBatchHumidity = new Chart($("chart-batch-humidity"), {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Độ ẩm TB (%)",
+                data: avgHumidities,
+                borderColor: "#38bdf8",
+                backgroundColor: "rgba(56,189,248,0.12)",
+                fill: true,
+                tension: 0.4,
+                pointRadius: 3,
+                borderWidth: 2,
+              },
+            ],
+          },
+          options: { ...CHART_DEFAULTS, scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 100 } } },
+        });
+
+        chartBatchPrecip = destroyChart(chartBatchPrecip);
+        chartBatchPrecip = new Chart($("chart-batch-precip"), {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Tổng mưa (mm)",
+                data: totalPrecips,
+                backgroundColor: "rgba(99,102,241,0.55)",
+                borderColor: "#6366f1",
+                borderWidth: 1,
+                borderRadius: 4,
+              },
+            ],
+          },
+          options: CHART_DEFAULTS,
+        });
+      }
+
+      /* ============================================================
+         TAB 3: BATCH SUMMARY
+      ============================================================ */
+      async function fetchBatchSummary() {
+        const loc = $("location-global").value;
+        if (!loc) return;
+        setStatus("batch-status", "Đang tải batch summary...", "info");
+        try {
+          const res = await fetch(`/api/weather/batch/summary?${new URLSearchParams({ location: loc })}`);
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+          const data = await res.json();
+          renderBatchSummary(data);
+          setStatus("batch-status", "✅ Batch summary đã tải.", "ok");
+        } catch (e) {
+          setStatus("batch-status", "⚠️ " + e.message, "warn");
+          $("batch-summary-card").classList.add("hidden");
+        }
+      }
+
+      function renderBatchSummary(d) {
+        $("batch-summary-card").classList.remove("hidden");
+        $("bs-location").textContent = d.Location || "N/A";
+        $("bs-hottest-date").textContent = d.hottest_date || "N/A";
+        $("bs-hottest-temp").textContent = d.hottest_temp != null ? d.hottest_temp.toFixed(1) + " °C" : "N/A";
+        $("bs-coldest-date").textContent = d.coldest_date || "N/A";
+        $("bs-coldest-temp").textContent = d.coldest_temp != null ? d.coldest_temp.toFixed(1) + " °C" : "N/A";
+        $("bs-latest-date").textContent = d.latest_date || "N/A";
+        $("bs-latest-temp").textContent = d.latest_avg_temp != null ? d.latest_avg_temp.toFixed(1) + " °C TB" : "N/A";
+
+        const days = d.longest_heatwave_days;
+        $("bs-heatwave-days").textContent = days ? days + " ngày liên tiếp" : "Không có";
+        if (d.heatwave_start && d.heatwave_end) {
+          $("bs-heatwave-range").textContent = d.heatwave_start + " → " + d.heatwave_end;
+          $("bs-heatwave-max").textContent =
+            d.heatwave_max_temp != null ? "Max: " + d.heatwave_max_temp.toFixed(1) + " °C" : "";
+        } else {
+          $("bs-heatwave-range").textContent = "";
+          $("bs-heatwave-max").textContent = "";
+        }
+      }
+
+      /* ============================================================
+         STATUS HELPER
+      ============================================================ */
+      function setStatus(id, msg, type) {
+        const el = $(id);
+        el.textContent = msg;
+        el.className = "status status-" + type;
+      }
+
+      /* ============================================================
+         INIT
+      ============================================================ */
+      document.addEventListener("DOMContentLoaded", () => {
+        fetchRealtime();
+        fetchHistory();
+        fetchBatchSummary();
       });
     </script>
   </body>
 </html>
-

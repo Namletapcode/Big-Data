@@ -30,8 +30,8 @@ def main():
         .config("spark.jars.packages", "org.elasticsearch:elasticsearch-spark-30_2.12:8.11.1") \
         .getOrCreate()
 
-    # Đọc dữ liệu lịch sử từ file JSONL (có thể gồm historical và crawler JSONL)
-    df = spark.read.json("*.jsonl")
+    # Đọc dữ liệu từ Master Dataset (Data Lake)
+    df = spark.read.json("/data_lake/*/*.jsonl")
 
     # Chuẩn hóa cột thời gian và location
     df = df.withColumn("Local_Time", to_timestamp(col("datetime")))
@@ -114,7 +114,7 @@ def main():
             col("end_date").alias("heatwave_end"),
             col("max_temp").alias("heatwave_max_temp"),
         ), on="Location", how="left",
-    ).fillna({"longest_heatwave_days": 0, "heatwave_start": "", "heatwave_end": "", "heatwave_max_temp": 0.0})
+    ).fillna({"longest_heatwave_days": 0, "heatwave_max_temp": 0.0})
 
     summary_df.write \
         .format("org.elasticsearch.spark.sql") \

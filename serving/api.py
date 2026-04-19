@@ -1,7 +1,7 @@
 import os
 from typing import Optional, List, Any, Dict
 
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, NotFoundError
 from fastapi import APIRouter, HTTPException, Query
 
 
@@ -64,6 +64,11 @@ def get_latest_weather(
                 "sort": [{"Local_Time.keyword": {"order": "desc"}}],
             },
         )
+    except NotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="Chưa có dữ liệu real-time. Crawler đang chờ hoặc API key đã hết quota.",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
 
@@ -91,6 +96,9 @@ def get_weather_history(
                 "sort": [{"Local_Time.keyword": {"order": "desc"}}],
             },
         )
+    except NotFoundError:
+        # Index chưa tồn tại → trả về mảng rỗng, không lỗi
+        return []
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
 
@@ -101,26 +109,37 @@ def get_weather_history(
 @router.get("/weather/locations")
 def list_locations(limit: int = Query(20, ge=1, le=100)) -> List[str]:
     es = get_es_client()
-    try:
+
+    def _query_locations(index_name: str, field: str) -> List[str]:
         resp = es.search(
-            index=ES_INDEX,
+            index=index_name,
             body={
                 "size": 0,
                 "aggs": {
                     "locations": {
                         "terms": {
-                            "field": "Location.keyword",
+                            "field": field,
                             "size": limit,
                         }
                     }
                 },
             },
         )
+        buckets = resp.get("aggregations", {}).get("locations", {}).get("buckets", [])
+        return [b["key"] for b in buckets]
+
+    # Thử realtime index trước, fallback sang batch daily nếu chưa có dữ liệu
+    try:
+        locs = _query_locations(ES_INDEX, "Location.keyword")
+        if locs:
+            return locs
+    except Exception:
+        pass
+
+    try:
+        return _query_locations(ES_INDEX_BATCH_DAILY, "Location.keyword")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
-
-    buckets = resp.get("aggregations", {}).get("locations", {}).get("buckets", [])
-    return [b["key"] for b in buckets]
 
 
 @router.get("/weather/batch/daily")

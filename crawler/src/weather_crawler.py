@@ -20,8 +20,18 @@ def run_crawler():
         weather_data = fetch_weather_data(location)
         
         if weather_data:
+            # Gửi vào Kafka (Cho Speed Layer)
             send_to_kafka(KAFKA_TOPIC, weather_data)
-
+            
+            # Ghi vào Data Lake / Master Dataset (Cho Batch Layer)
+            lake_dir = '/data_lake/realtime'
+            os.makedirs(lake_dir, exist_ok=True)
+            file_path = os.path.join(lake_dir, f'raw_{location.replace(",", "_")}.jsonl')
+            try:
+                with open(file_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(weather_data, ensure_ascii=False) + '\n')
+            except Exception as e:
+                print(f"Lỗi ghi Data Lake: {e}")
         else:
             continue
         
