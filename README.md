@@ -10,7 +10,7 @@ Trước tiên bạn cần có liên kết với cloud gcp của Tài, làm theo
   
   +B4: gửi gmail cho admin để admin cấp quyền
   
-  +B5: mở cmd chạy: gcloud container clusters get-credentials bigdata-cluster --region asia-southeast1 --project bigdata-k8s-project
+  +B5: mở cmd chạy: gcloud container clusters get-credentials bigdata-cluster --region asia-southeast1-a --project bigdata-k8s-project
   
   +B6 chạy: gcloud auth configure-docker asia-southeast1-docker.pkg.dev (cho phép docker giao tiếp với cloud ở gg )
   
