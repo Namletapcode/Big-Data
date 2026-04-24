@@ -1,10 +1,13 @@
 import os
 import requests
 import json
+import logging
 from dotenv import load_dotenv
 
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(BASE_DIR, 'configs', 'crawler_state.json')
@@ -33,7 +36,8 @@ idx = get_used_idx()
 
 params = {
     'unitGroup': 'metric',
-    'contentType': 'json'
+    'contentType': 'json',
+    'include': 'current'
 }
 
 def fetch_weather_data(location):
@@ -43,11 +47,11 @@ def fetch_weather_data(location):
     try:
         while True:
             if idx >= len(API_KEY_LIST):
-                print('Đã sử dụng hết key')
+                logging.critical('Đã sử dụng hết key')
                 return
             
             params['key'] = API_KEY_LIST[idx]
-            response = requests.get(url=url, params=params, timeout=(3, 10))
+            response = requests.get(url=url, params=params, timeout=(5, 10))
 
             if response.status_code in [401, 429]:
                 idx += 1
@@ -58,7 +62,7 @@ def fetch_weather_data(location):
             return response.json()
 
     except Exception as e:
-        print(f'Lỗi khi lấy dữ liệu tại tọa độ {location}: {e}')
+        logging.error(f'Lỗi khi lấy dữ liệu tại tọa độ {location}: {e}')
 
 
 if __name__ == "__main__":

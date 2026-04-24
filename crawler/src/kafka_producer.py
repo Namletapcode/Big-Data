@@ -1,16 +1,19 @@
 import json
+import logging
 from confluent_kafka import Producer
 
+
+logger = logging.getLogger(__name__)
 
 config = {'bootstrap.servers': 'kafka:9092'}
 producer = Producer(config)
 
 def report(err, msg):
     if err is None:
-        print(f'Đã gửi tới {msg.topic()} [partition: {msg.partition()}] | offset: {msg.offset()}')
+        logging.info(f'Đã gửi tới {msg.topic()} [partition: {msg.partition()}] | offset: {msg.offset()}')
 
     else:
-        print(f'Gửi thất bại {err}')
+        logging.error(f'Gửi thất bại: {err}')
 
 def send_to_kafka(topic, data):
     try:
@@ -20,4 +23,4 @@ def send_to_kafka(topic, data):
         producer.flush()
 
     except Exception as e:
-        print(f'Lỗi khi đẩy vào Kafka: {e}')
+        logging.error(f'Lỗi khi đẩy vào Kafka: {e}')

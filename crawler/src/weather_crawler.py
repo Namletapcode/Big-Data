@@ -1,8 +1,15 @@
 import os
 import json
+import logging
 from weather_fetcher import fetch_weather_data
 from kafka_producer import send_to_kafka
 
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(filename)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOCATIONS_FILE = os.path.join(BASE_DIR, 'configs', 'locations.json')
@@ -16,7 +23,7 @@ LOCATIONS = [f'{item['latitude']},{item['longitude']}' for item in data]
 
 def run_crawler():
     for location in LOCATIONS:
-        print(f'Đang lấy dữ liệu cho: {location}...')
+        logging.info(f'Đang lấy dữ liệu cho: {location}')
         weather_data = fetch_weather_data(location)
         
         if weather_data:
@@ -28,6 +35,6 @@ def run_crawler():
     return True
 
 if __name__ == "__main__":
-    print('Khởi động Weather Crawler...')
+    logging.info('Khởi động Weather Crawler')
     run_crawler()
-    print('Đã tắt Weather Crawler')
+    logging.info('Đã tắt Weather Crawler')
