@@ -14,7 +14,7 @@ logging.basicConfig(
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOCATIONS_FILE = os.path.join(BASE_DIR, 'configs', 'locations.json')
 
-KAFKA_TOPIC = 'raw_weather_data'
+KAFKA_TOPIC = 'weather_data'
 
 with open(LOCATIONS_FILE, 'r', encoding='utf-8') as file:
     data = json.load(file)

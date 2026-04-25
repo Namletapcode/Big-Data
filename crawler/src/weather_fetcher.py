@@ -47,7 +47,7 @@ def fetch_weather_data(location):
     try:
         while True:
             if idx >= len(API_KEY_LIST):
-                logging.critical('Đã sử dụng hết key')
+                logger.critical('Đã sử dụng hết key')
                 return
             
             params['key'] = API_KEY_LIST[idx]
@@ -62,7 +62,7 @@ def fetch_weather_data(location):
             return response.json()
 
     except Exception as e:
-        logging.error(f'Lỗi khi lấy dữ liệu tại tọa độ {location}: {e}')
+        logger.error(f'Lỗi khi lấy dữ liệu tại tọa độ {location}: {e}')
 
 
 if __name__ == "__main__":

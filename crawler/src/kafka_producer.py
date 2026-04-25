@@ -10,10 +10,10 @@ producer = Producer(config)
 
 def report(err, msg):
     if err is None:
-        logging.info(f'Đã gửi tới {msg.topic()} [partition: {msg.partition()}] | offset: {msg.offset()}')
+        logger.info(f'Đã gửi tới {msg.topic()} [partition: {msg.partition()}] | offset: {msg.offset()}')
 
     else:
-        logging.error(f'Gửi thất bại: {err}')
+        logger.error(f'Gửi thất bại: {err}')
 
 def send_to_kafka(topic, data):
     try:
@@ -23,4 +23,4 @@ def send_to_kafka(topic, data):
         producer.flush()
 
     except Exception as e:
-        logging.error(f'Lỗi khi đẩy vào Kafka: {e}')
+        logger.error(f'Lỗi khi đẩy vào Kafka: {e}')
