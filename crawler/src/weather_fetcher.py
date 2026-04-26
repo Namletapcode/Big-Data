@@ -40,9 +40,9 @@ params = {
     'include': 'current'
 }
 
-def fetch_weather_data(location):
+def fetch_weather_data(lat, lon):
     global idx
-    url = f'{BASE_URL}/{location}'
+    url = f'{BASE_URL}/{lat},{lon}/today'
 
     try:
         while True:
@@ -62,12 +62,12 @@ def fetch_weather_data(location):
             return response.json()
 
     except Exception as e:
-        logger.error(f'Lỗi khi lấy dữ liệu tại tọa độ {location}: {e}')
+        logger.error(f'Lỗi khi lấy dữ liệu tại tọa độ {lat}, {lon}: {e}')
 
 
 if __name__ == "__main__":
-    location = '21.0283334,105.854041'
-    weather_data = fetch_weather_data(location)
+    lat = 21.0283334
+    lon = 105.854041
+    weather_data = fetch_weather_data(lat, lon)
 
-    for key, value in weather_data.items():
-        print(f'{key}: {value}')
+    print(json.dumps(weather_data, ensure_ascii=False, indent=2))

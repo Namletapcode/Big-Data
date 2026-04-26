@@ -18,16 +18,19 @@ LOCATIONS_FILE = os.path.join(BASE_DIR, 'configs', 'locations.json')
 KAFKA_TOPIC = 'weather_data'
 
 with open(LOCATIONS_FILE, 'r', encoding='utf-8') as file:
-    data = json.load(file)
-
-LOCATIONS = [f'{item['latitude']},{item['longitude']}' for item in data]
+    locations = json.load(file)
 
 def run_crawler():
-    for location in LOCATIONS:
-        logger.info(f'Đang lấy dữ liệu cho: {location}')
-        weather_data = fetch_weather_data(location)
+    for location in locations:
+        loc_name = f"{location['name']}, {location['country_code']}"
+
+        logger.info(f'Đang lấy dữ liệu cho: {loc_name}')
+
+        weather_data = fetch_weather_data(location['latitude'], location['longitude'])
         
         if weather_data:
+            weather_data['address'] = loc_name
+            
             send_to_kafka(KAFKA_TOPIC, weather_data)
 
         else:
