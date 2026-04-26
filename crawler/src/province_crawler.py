@@ -2,10 +2,17 @@ import os
 import requests
 import json
 import time
+import logging
 from dotenv import load_dotenv
 
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(filename)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOCATIONS_FILE = os.path.join(BASE_DIR, 'configs', 'locations.json')
@@ -40,7 +47,7 @@ def fetch_province_data(country_codes):
                 })
                     
         except Exception as e:
-            print(f'Lỗi khi lấy dữ liệu {code}: {e}')
+            logging.error(f'Lỗi khi lấy dữ liệu {code}: {e}')
 
         time.sleep(1)
 
@@ -53,6 +60,6 @@ def fetch_province_data(country_codes):
 if __name__ == "__main__":
     country_code = ['VN']
 
-    print('Khởi động Province Crawler...')
+    logging.info('Khởi động Province Crawler...')
     fetch_province_data(country_code)
-    print('Đã tắt Province Crawler')
+    logging.info('Đã tắt Province Crawler')
