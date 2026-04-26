@@ -1,21 +1,25 @@
 import os
+import sys
 import json
 import logging
 import time
 from datetime import datetime
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(BASE_DIR)
+
 from pollution_fetcher_v1 import fetch_pollution_data_v1
 from pollution_fetcher_v2 import fetch_pollution_data_v2
 from kafka_producer import send_to_kafka
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('pollution_crawler')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOCATIONS_FILE = os.path.join(BASE_DIR, 'configs', 'locations.json')
 
 KAFKA_TOPIC = 'pollution_data'

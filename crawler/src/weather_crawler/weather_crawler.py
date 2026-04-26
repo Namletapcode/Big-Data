@@ -1,18 +1,23 @@
 import os
+import sys
 import json
 import logging
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(BASE_DIR)
+
 from weather_fetcher import fetch_weather_data
 from kafka_producer import send_to_kafka
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('weather_crawler')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOCATIONS_FILE = os.path.join(BASE_DIR, 'configs', 'locations.json')
 
 KAFKA_TOPIC = 'weather_data'
@@ -35,8 +40,6 @@ def run_crawler():
 
         else:
             continue
-        
-    return True
 
 if __name__ == "__main__":
     logger.info('Khởi động Weather Crawler')
