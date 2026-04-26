@@ -5,9 +5,10 @@ from weather_fetcher import fetch_weather_data
 from kafka_producer import send_to_kafka
 
 
+logger = logging.getLogger(__name__)
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(filename)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
@@ -23,7 +24,7 @@ LOCATIONS = [f'{item['latitude']},{item['longitude']}' for item in data]
 
 def run_crawler():
     for location in LOCATIONS:
-        logging.info(f'Đang lấy dữ liệu cho: {location}')
+        logger.info(f'Đang lấy dữ liệu cho: {location}')
         weather_data = fetch_weather_data(location)
         
         if weather_data:
@@ -35,6 +36,6 @@ def run_crawler():
     return True
 
 if __name__ == "__main__":
-    logging.info('Khởi động Weather Crawler')
+    logger.info('Khởi động Weather Crawler')
     run_crawler()
-    logging.info('Đã tắt Weather Crawler')
+    logger.info('Đã tắt Weather Crawler')
