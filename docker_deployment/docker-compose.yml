@@ -24,14 +24,14 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    mem_limit: 768m
+    mem_limit: 1g
     cpus: 0.8
     healthcheck:
       test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 120s
 
   weather_crawler:
     build: ../crawler
@@ -41,6 +41,9 @@ services:
       kafka:
         condition: service_healthy
     networks: [bigdata-net]
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
 
   pollution_crawler:
     build: ../crawler
@@ -50,6 +53,9 @@ services:
       kafka:
         condition: service_healthy
     networks: [bigdata-net]
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
