@@ -5,4 +5,4 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY *.jsonl ./
 COPY spark_batch.py ./
-CMD ["spark-submit", "--packages", "org.elasticsearch:elasticsearch-spark-30_2.12:8.11.1", "spark_batch.py"]
+CMD ["spark-submit", "--packages", "org.elasticsearch:elasticsearch-spark-30_2.12:7.17.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262", "spark_batch.py"]

@@ -1,23 +1,15 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col,
-    avg,
-    min,
-    max,
-    sum as spark_sum,
-    date_format,
-    regexp_replace,
-    to_timestamp,
-    to_date,
-    when,
-    lit,
-    lag,
-    row_number,
-    datediff,
+    col, avg, min, max, sum as spark_sum,
+    date_format, regexp_replace, to_timestamp,
+    to_date, when, lit, lag, row_number, datediff,coalesce
 )
 from pyspark.sql.window import Window
 import os
 
+#--- ENV CONFIF --- 
+MINIO_USER = os.getenv("MINIO_ROOT_USER", "admin")
+MINIO_PASS = os.getenv("MINIO_ROOT_PASSWORD", "password123")
 ES_HOST = os.getenv("ES_HOST", "elasticsearch")
 ES_INDEX_DAILY = "weather_batch_daily"
 ES_INDEX_STATS = "weather_batch_stats"
@@ -25,14 +17,53 @@ HEATWAVE_THRESHOLD = 30.0
 
 
 def main():
+    print("Khởi động Batch Job: Kéo dữ liệu từ MinIO")
+    # 1. KHỞI TẠO SPARK VÀ CẤU HÌNH MINIO S3
     spark = SparkSession.builder \
         .appName("Weather-Batch-Layer") \
-        .config("spark.jars.packages", "org.elasticsearch:elasticsearch-spark-30_2.12:8.11.1") \
+        .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
+        .config("spark.hadoop.fs.s3a.access.key", MINIO_USER) \
+        .config("spark.hadoop.fs.s3a.secret.key", MINIO_PASS) \
+        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
+        .config("spark.sql.session.timeZone", "Asia/Ho_Chi_Minh") \
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
         .getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
 
-    # Đọc dữ liệu lịch sử từ file JSONL (có thể gồm historical và crawler JSONL)
-    df = spark.read.json("*.jsonl")
+    # 2. ĐỌC DỮ LIỆU TỪ MINIO
+    paths_to_read = [
+        "s3a://raw-weather-data/topics/raw_weather_data/*/*.json", # Data Streaming
+        "s3a://raw-weather-data/historical/*"                          # Data Lịch sử (.jsonl)
+    ]
+    df = spark.read.option("mode", "DROPMALFORMED").json(paths_to_read)
 
+
+    #Nếu không có address thì tìm resolvedAddress, nếu có cả 2 thì ưu tiên address
+    if "address" in df.columns and "resolvedAddress" in df.columns:
+        loc_col = coalesce(col("address"), col("resolvedAddress"))
+    elif "address" in df.columns:
+        loc_col = col("address")
+    else:
+        loc_col = col("resolvedAddress")
+        
+    if "currentConditions" in df.columns:
+        df = df.select(
+            loc_col.alias("resolvedAddress"),
+            coalesce(col("currentConditions.datetime"), col("datetime")).alias("datetime"),
+            coalesce(col("currentConditions.temp"), col("temp")).alias("temp"),
+            coalesce(col("currentConditions.humidity"), col("humidity")).alias("humidity"),
+            coalesce(col("currentConditions.precip"), col("precip")).alias("precip")
+        )
+    else:
+        df = df.select(
+            loc_col.alias("resolvedAddress"),
+            col("datetime"),
+            col("temp"),
+            col("humidity"),
+            col("precip")
+        )
+
+        
     # Chuẩn hóa cột thời gian và location
     df = df.withColumn("Local_Time", to_timestamp(col("datetime")))
     df = df.withColumn("Location", regexp_replace(col("resolvedAddress"), ", Việt Nam", ""))
