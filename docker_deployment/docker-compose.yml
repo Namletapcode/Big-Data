@@ -24,14 +24,15 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    mem_limit: 768m
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
+    mem_limit: 1536m
     cpus: 0.8
     healthcheck:
       test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 60s
 
   weather_crawler:
     build: ../crawler
@@ -41,6 +42,8 @@ services:
       kafka:
         condition: service_healthy
     networks: [bigdata-net]
+    env_file:
+      - ../crawler/.env
 
   pollution_crawler:
     build: ../crawler
@@ -50,6 +53,9 @@ services:
       kafka:
         condition: service_healthy
     networks: [bigdata-net]
+    env_file:
+      - ../crawler/.env
+    
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
@@ -86,7 +92,7 @@ services:
     restart: always
     environment:
       - KAFKA_BOOTSTRAP=kafka:9092
-      - KAFKA_TOPIC=raw_weather_data
+      - KAFKA_TOPIC=weather_data
       - ES_HOST=elasticsearch  
 
   minio:
@@ -107,12 +113,12 @@ services:
     networks: [bigdata-net]
     depends_on:
       - minio
-    entrypoint: >
+    entrypoint: 
       /bin/sh -c "
       sleep 5;
       mc alias set myminio http://minio:9000 admin password123;
-      mc mb myminio/raw-weather-data || true;
-      mc anonymous set public myminio/raw-weather-data;
+      mc mb myminio/weather-data || true;
+      mc anonymous set public myminio/weather-data;
       exit 0;
       "
 
@@ -134,7 +140,7 @@ services:
   kafka_connect:
     build:
       context: ../batch
-      dockerfile: Dockerfile.kafkaconnect # Trỏ đích danh file build Kafka Connect
+      dockerfile: Dockerfile.kafkaconnect 
     container_name: kafka_connect
     depends_on:
       kafka:

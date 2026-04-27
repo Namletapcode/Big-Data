@@ -6,7 +6,7 @@ from pyspark.sql.functions import col, from_json, current_timestamp
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType, ArrayType
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "raw_weather_data")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "weather_data")
 ES_HOST = os.getenv("ES_HOST", "elasticsearch")
 ES_INDEX = "weather_realtime" 
 CHECKPOINT_PATH = "/tmp/spark_checkpoints/weather_es"
@@ -82,7 +82,7 @@ def main():
         .format("kafka") \
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP) \
         .option("subscribe", KAFKA_TOPIC) \
-        .option("startingOffsets", "latest") \
+        .option("startingOffsets", "earliest") \
         .load()
 
     parsed_stream = (
