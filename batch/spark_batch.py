@@ -21,7 +21,7 @@ def main():
     # 1. KHỞI TẠO SPARK VÀ CẤU HÌNH MINIO S3
     spark = SparkSession.builder \
         .appName("Weather-Batch-Layer") \
-        .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
+        .config("spark.hadoop.fs.s3a.endpoint", "http://35.240.199.161:9000") \
         .config("spark.hadoop.fs.s3a.access.key", MINIO_USER) \
         .config("spark.hadoop.fs.s3a.secret.key", MINIO_PASS) \
         .config("spark.hadoop.fs.s3a.path.style.access", "true") \
@@ -32,7 +32,7 @@ def main():
 
     # 2. ĐỌC DỮ LIỆU TỪ MINIO
     paths_to_read = [
-        "s3a://raw-weather-data/topics/raw_weather_data/*/*.json", # Data Streaming
+        "s3a://raw-weather-data/topics/weather_data/*/*.json", # Data Streaming
         "s3a://raw-weather-data/historical/*"                          # Data Lịch sử (.jsonl)
     ]
     df = spark.read.option("mode", "DROPMALFORMED").json(paths_to_read)
