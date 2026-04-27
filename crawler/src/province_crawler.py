@@ -8,8 +8,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger('province_crawler')
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(filename)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
@@ -47,7 +48,7 @@ def fetch_province_data(country_codes):
                 })
                     
         except Exception as e:
-            logging.error(f'Lỗi khi lấy dữ liệu {code}: {e}')
+            logger.error(f'Lỗi khi lấy dữ liệu {code}: {e}')
 
         time.sleep(1)
 
@@ -60,6 +61,6 @@ def fetch_province_data(country_codes):
 if __name__ == "__main__":
     country_code = ['VN']
 
-    logging.info('Khởi động Province Crawler...')
+    logger.info('Khởi động Province Crawler')
     fetch_province_data(country_code)
-    logging.info('Đã tắt Province Crawler')
+    logger.info('Đã tắt Province Crawler')
