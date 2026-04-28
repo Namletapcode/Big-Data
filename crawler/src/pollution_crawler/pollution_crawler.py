@@ -96,7 +96,7 @@ def run_crawler():
 
         send_to_kafka(KAFKA_TOPIC, pollution_data)
 
-        time.sleep(1)
+        time.sleep(0.2)
 
 if __name__ == "__main__":
     logger.info('Khởi động Pollution Crawler')

@@ -24,8 +24,7 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
-    mem_limit: 1536m
+    mem_limit: 1g
     cpus: 0.8
     healthcheck:
       test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
@@ -42,6 +41,9 @@ services:
       kafka:
         condition: service_healthy
     networks: [bigdata-net]
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     env_file:
       - ../crawler/.env
 
@@ -53,6 +55,9 @@ services:
       kafka:
         condition: service_healthy
     networks: [bigdata-net]
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     env_file:
       - ../crawler/.env
     

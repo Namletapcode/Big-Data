@@ -1,38 +1,25 @@
 import os
+import sys
 import requests
 import json
 import logging
+import time
 from dotenv import load_dotenv
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATE_FILE = os.path.join(BASE_DIR, 'configs', 'weather_crawler_state.json')
+sys.path.append(BASE_DIR)
+
+from utils import get_state, update_state
 
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATE_FILE = os.path.join(BASE_DIR, 'configs', 'crawler_state.json')
-
-def get_used_idx():
-    if not os.path.exists(STATE_FILE):
-        return 0
-    
-    try:
-        with open(STATE_FILE, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-            return data['used_idx']
-        
-    except:
-        return 0
-    
-def update_used_idx(idx):
-    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-
-    with open(STATE_FILE, 'w', encoding='utf-8') as file:
-        json.dump({'used_idx': idx}, file, indent=4)
-
 API_KEY_LIST = list(os.getenv('VISUAL_CROSSING_API_KEY_LIST', '').split(','))
 BASE_URL = 'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline'
-idx = get_used_idx()
+idx = get_state(STATE_FILE, 'key_idx')
 
 params = {
     'unitGroup': 'metric',
@@ -40,29 +27,37 @@ params = {
     'include': 'current'
 }
 
-def fetch_weather_data(lat, lon):
+def fetch_weather_data(lat, lon, max_iter=10, interval=0.2):
     global idx
     url = f'{BASE_URL}/{lat},{lon}/today'
 
-    try:
-        while True:
-            if idx >= len(API_KEY_LIST):
-                logger.critical('Đã sử dụng hết key')
-                return
-            
-            params['key'] = API_KEY_LIST[idx]
-            response = requests.get(url=url, params=params, timeout=(5, 10))
+    for _ in range(max_iter):
+        try:
+            while True:
+                if idx >= len(API_KEY_LIST):
+                    logger.critical('Đã sử dụng hết key')
+                    return
+                
+                params['key'] = API_KEY_LIST[idx]
+                response = requests.get(url=url, params=params, timeout=(5, 10))
 
-            if response.status_code in [401, 429]:
-                idx += 1
-                continue
+                if response.status_code in [401, 429]:
+                    idx += 1
+                    continue
 
-            update_used_idx(idx)
-            response.raise_for_status()
-            return response.json()
+                update_state(STATE_FILE, 'key_idx', idx)
+                response.raise_for_status()
 
-    except Exception as e:
-        logger.error(f'Lỗi khi lấy dữ liệu tại tọa độ {lat}, {lon}: {e}')
+                logger.info(f'Đã lấy thành công dữ liệu tại tọa độ {lat}, {lon}')
+
+                return response.json()
+
+        except Exception as e:
+            logger.error(f'Lỗi khi lấy dữ liệu tại tọa độ {lat}, {lon}: {e}')
+
+        time.sleep(interval)
+
+    logger.warning(f'Không lấy được dữ liệu tại tọa độ {lat}, {lon}')
 
 
 if __name__ == "__main__":
