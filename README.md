@@ -7,8 +7,8 @@ Dự án thu thập, xử lý và trực quan hóa dữ liệu thời tiết cho
 Hệ thống được chia thành 4 lớp (layers) chính, chạy hoàn toàn trên Docker:
 
 1. **Data Ingestion (Thu thập)**
-   - **Weather Crawler**: Dùng Visual Crossing API lấy dữ liệu dự báo/hiện tại → Đẩy lên Kafka.
-   - **Pollution Crawler**: Lấy dữ liệu ô nhiễm không khí → Đẩy lên Kafka.
+   - **Weather Crawler**: Lấy dữ liệu quan trắc/dự đoán từ Visual Crossing  → Đẩy lên Kafka.
+   - **Pollution Crawler**: Tổng hợp dữ liệu từ Open Meteo và Open Weather Map → Đẩy lên Kafka.
 2. **Speed Layer (Xử lý Real-time)**
    - **Spark Streaming**: Đọc dữ liệu từ Kafka (`weather_data`), parse JSON và ghi trực tiếp vào Elasticsearch (Index: `weather_realtime`). Dữ liệu xuất hiện ngay lập tức trên Dashboard.
 3. **Batch Layer (Xử lý Lô)**
@@ -23,14 +23,21 @@ Hệ thống được chia thành 4 lớp (layers) chính, chạy hoàn toàn tr
 ## 🚀 Hướng dẫn Cài đặt & Khởi chạy
 
 ### 1. Cấu hình biến môi trường
-Mở thư mục `crawler` và tạo/chỉnh sửa file `.env`. Điền các API Key cần thiết (đặc biệt là Visual Crossing để lấy dữ liệu thời tiết):
+Trong thư mục `crawler`, tạo/chỉnh sửa file `.env`. Điền các API Key cần thiết (đặc biệt là Visual Crossing để lấy dữ liệu thời tiết và Open Weather Map để lấy dữ liệu ô nhiễm):
 
 ```env
 # crawler/.env
-# Đăng ký tại: https://www.visualcrossing.com/sign-up
+
+# Đăng ký tại: https://www.visualcrossing.com/
 VISUAL_CROSSING_API_KEY_LIST=key1,key2,key3...
+
+# Đăng ký tại: https://openweathermap.org/
+OPEN_WEATHER_API_KEY_LIST=key1,key2,key3,...
+
+# Đăng ký tại: https://countrystatecity.in/
+COUNTRY_STATE_CITY_API_KEY=key
 ```
-*(Lưu ý: API cho phép xoay vòng nhiều key bằng cách ngăn cách bởi dấu phẩy để tránh hết quota).*
+*Lưu ý: Weather crawler và Pollution crawler hỗ trợ cơ chế xoay vòng API key. Bạn có thể cung cấp nhiều key cùng lúc (tối thiểu 5 key đối với Open Weather Map), ngăn cách bởi dấu phẩy (không chứa khoảng trắng) để tránh hết quota.*
 
 ### 2. Khởi động các Services bằng Docker Compose
 Di chuyển vào thư mục `docker_deployment` và build các container:
@@ -83,7 +90,7 @@ Sau khi hệ thống chạy, bạn có thể truy cập các thành phần qua t
 
 ## 🛠️ Khắc phục sự cố (Troubleshooting)
 
-- **Crawlers không lấy được dữ liệu:** Xem log của container để biết chi tiết (thường là do API key hết hạn hoặc sai format).
-  `docker logs weather_crawler`
+- **Crawlers không lấy được dữ liệu:** Xem log của container weather_crawler và pollution_crawler để biết chi tiết (thường là do API key hết hạn, sai format, hoặc lỗi mạng):
+  `docker logs weather_crawler`, `docker logs pollution_crawler`
 - **Dashboard không có biểu đồ:** Dữ liệu batch chưa được tính toán. Hãy đảm bảo MinIO đã có file JSON (`http://localhost:9001` > raw-weather-data) và chạy lại lệnh `docker start spark_batch_layer`.
 - **Dữ liệu không chảy vào MinIO:** Do Kafka Connect chưa được gửi request kích hoạt `config.json` hoặc config sai endpoint. Cần đảm bảo `store.url` trong `batch/config.json` là `http://minio:9000` khi chạy trên máy cá nhân.
