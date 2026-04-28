@@ -117,8 +117,8 @@ services:
       /bin/sh -c "
       sleep 5;
       mc alias set myminio http://minio:9000 admin password123;
-      mc mb myminio/weather-data || true;
-      mc anonymous set public myminio/weather-data;
+      mc mb myminio/raw-weather-data || true;
+      mc anonymous set public myminio/raw-weather-data;
       exit 0;
       "
 
