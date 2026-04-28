@@ -10,14 +10,14 @@ producer = Producer(config)
 
 def report(err, msg):
     if err is None:
-        logger.info(f'Đã gửi tới {msg.topic()} [partition: {msg.partition()}] | offset: {msg.offset()}')
+        logger.info(f'Đã gửi tới {msg.topic()}: partition: {msg.partition()} | offset: {msg.offset()}')
 
     else:
         logger.error(f'Gửi thất bại: {err}')
 
 def send_to_kafka(topic, data):
     try:
-        json_data = json.dumps(data).encode('utf-8')
+        json_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
 
         producer.produce(topic, json_data, callback=report)
         producer.flush()

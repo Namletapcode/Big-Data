@@ -2,6 +2,7 @@ import os
 import requests
 import json
 import logging
+import time
 from dotenv import load_dotenv
 
 
@@ -13,23 +14,32 @@ API_KEY_LIST = list(os.getenv('OPEN_WEATHER_API_KEY_LIST', '').split(','))
 BASE_URL = 'http://api.openweathermap.org/data/2.5/air_pollution'
 idx = 0
 
-def fetch_pollution_data_v2(lat, lon):
+def fetch_pollution_data_v2(lat, lon, max_iter=10, interval=0.2):
     global idx
     params = {
-        'appid': API_KEY_LIST[idx],
         'lat': lat,
         'lon': lon
     }
 
-    try:
-        response = requests.get(url=BASE_URL, params=params, timeout=(5, 10))
+    for _ in range(max_iter):
+        params['appid'] = API_KEY_LIST[idx]
 
-        idx = (idx + 1) % len(API_KEY_LIST)
-        response.raise_for_status()
-        return response.json()
-    
-    except Exception as e:
-        logger.error(f'Lỗi khi lấy dữ liệu tại tọa độ {lat}, {lon}: {e}')
+        try:
+            response = requests.get(url=BASE_URL, params=params, timeout=(5, 10))
+
+            idx = (idx + 1) % len(API_KEY_LIST)
+            response.raise_for_status()
+
+            logger.info(f'Đã lấy thành công dữ liệu tại tọa độ {lat}, {lon}')
+
+            return response.json()
+        
+        except Exception as e:
+            logger.error(f'Lỗi khi lấy dữ liệu tại tọa độ {lat}, {lon}: {e}')
+
+        time.sleep(interval)
+
+    logger.warning(f'Không lấy được dữ liệu tại tọa độ {lat}, {lon}')
 
 
 if __name__ == "__main__":

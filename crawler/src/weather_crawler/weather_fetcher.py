@@ -3,6 +3,7 @@ import sys
 import requests
 import json
 import logging
+import time
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -26,29 +27,37 @@ params = {
     'include': 'current'
 }
 
-def fetch_weather_data(lat, lon):
+def fetch_weather_data(lat, lon, max_iter=10, interval=0.2):
     global idx
     url = f'{BASE_URL}/{lat},{lon}/today'
 
-    try:
-        while True:
-            if idx >= len(API_KEY_LIST):
-                logger.critical('Đã sử dụng hết key')
-                return
-            
-            params['key'] = API_KEY_LIST[idx]
-            response = requests.get(url=url, params=params, timeout=(5, 10))
+    for _ in range(max_iter):
+        try:
+            while True:
+                if idx >= len(API_KEY_LIST):
+                    logger.critical('Đã sử dụng hết key')
+                    return
+                
+                params['key'] = API_KEY_LIST[idx]
+                response = requests.get(url=url, params=params, timeout=(5, 10))
 
-            if response.status_code in [401, 429]:
-                idx += 1
-                continue
+                if response.status_code in [401, 429]:
+                    idx += 1
+                    continue
 
-            update_state(STATE_FILE, 'key_idx', idx)
-            response.raise_for_status()
-            return response.json()
+                update_state(STATE_FILE, 'key_idx', idx)
+                response.raise_for_status()
 
-    except Exception as e:
-        logger.error(f'Lỗi khi lấy dữ liệu tại tọa độ {lat}, {lon}: {e}')
+                logger.info(f'Đã lấy thành công dữ liệu tại tọa độ {lat}, {lon}')
+
+                return response.json()
+
+        except Exception as e:
+            logger.error(f'Lỗi khi lấy dữ liệu tại tọa độ {lat}, {lon}: {e}')
+
+        time.sleep(interval)
+
+    logger.warning(f'Không lấy được dữ liệu tại tọa độ {lat}, {lon}')
 
 
 if __name__ == "__main__":
