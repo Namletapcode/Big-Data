@@ -145,7 +145,7 @@ def main():
             col("end_date").alias("heatwave_end"),
             col("max_temp").alias("heatwave_max_temp"),
         ), on="Location", how="left",
-    ).fillna({"longest_heatwave_days": 0, "heatwave_start": "", "heatwave_end": "", "heatwave_max_temp": 0.0})
+    ).fillna({"longest_heatwave_days": 0, "heatwave_max_temp": 0.0})
 
     summary_df.write \
         .format("org.elasticsearch.spark.sql") \
