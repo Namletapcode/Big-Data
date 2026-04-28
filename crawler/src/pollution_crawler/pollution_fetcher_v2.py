@@ -9,20 +9,22 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-API_KEY = os.getenv('OPEN_WEATHER_API_KEY')
+API_KEY_LIST = list(os.getenv('OPEN_WEATHER_API_KEY_LIST', '').split(','))
 BASE_URL = 'http://api.openweathermap.org/data/2.5/air_pollution'
-
-params = {
-    'appid': API_KEY
-}
+idx = 0
 
 def fetch_pollution_data_v2(lat, lon):
-    params['lat'] = lat
-    params['lon'] = lon
+    global idx
+    params = {
+        'appid': API_KEY_LIST[idx],
+        'lat': lat,
+        'lon': lon
+    }
 
     try:
         response = requests.get(url=BASE_URL, params=params, timeout=(5, 10))
 
+        idx = (idx + 1) % len(API_KEY_LIST)
         response.raise_for_status()
         return response.json()
     

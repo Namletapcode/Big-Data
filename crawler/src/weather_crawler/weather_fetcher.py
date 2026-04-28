@@ -1,38 +1,24 @@
 import os
+import sys
 import requests
 import json
 import logging
 from dotenv import load_dotenv
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATE_FILE = os.path.join(BASE_DIR, 'configs', 'weather_crawler_state.json')
+sys.path.append(BASE_DIR)
+
+from utils import get_state, update_state
 
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATE_FILE = os.path.join(BASE_DIR, 'configs', 'crawler_state.json')
-
-def get_used_idx():
-    if not os.path.exists(STATE_FILE):
-        return 0
-    
-    try:
-        with open(STATE_FILE, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-            return data['used_idx']
-        
-    except:
-        return 0
-    
-def update_used_idx(idx):
-    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-
-    with open(STATE_FILE, 'w', encoding='utf-8') as file:
-        json.dump({'used_idx': idx}, file, indent=4)
-
 API_KEY_LIST = list(os.getenv('VISUAL_CROSSING_API_KEY_LIST', '').split(','))
 BASE_URL = 'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline'
-idx = get_used_idx()
+idx = get_state(STATE_FILE, 'key_idx')
 
 params = {
     'unitGroup': 'metric',
@@ -57,7 +43,7 @@ def fetch_weather_data(lat, lon):
                 idx += 1
                 continue
 
-            update_used_idx(idx)
+            update_state(STATE_FILE, 'key_idx', idx)
             response.raise_for_status()
             return response.json()
 
