@@ -61,7 +61,7 @@ def get_latest_weather(
             body={
                 "size": 1,
                 "query": query,
-                "sort": [{"Local_Time.keyword": {"order": "desc"}}],
+                "sort": [{"Local_Time": {"order": "desc"}}],
             },
         )
     except Exception as e:

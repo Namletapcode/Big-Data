@@ -1,8 +1,7 @@
 import os
 import time
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import to_json, struct, current_timestamp, concat, lit
-from pyspark.sql.functions import col, from_json, current_timestamp
+from pyspark.sql.functions import concat, lit, col, from_json, from_unixtime, coalesce
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType, ArrayType
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
@@ -40,6 +39,77 @@ def main():
     
     spark.sparkContext.setLogLevel("WARN")
 
+    # 1. Schema cho dự báo từng giờ
+    hour_schema = StructType([
+        StructField("datetime", StringType(), True),
+        StructField("datetimeEpoch", LongType(), True),
+        StructField("temp", DoubleType(), True),
+        StructField("feelslike", DoubleType(), True),
+        StructField("humidity", DoubleType(), True),
+        StructField("dew", DoubleType(), True),
+        StructField("precip", DoubleType(), True),
+        StructField("precipprob", DoubleType(), True),
+        StructField("snow", DoubleType(), True),
+        StructField("snowdepth", DoubleType(), True),
+        StructField("preciptype", ArrayType(StringType()), True), 
+        StructField("windgust", DoubleType(), True),
+        StructField("windspeed", DoubleType(), True),
+        StructField("winddir", DoubleType(), True),
+        StructField("pressure", DoubleType(), True),
+        StructField("visibility", DoubleType(), True),
+        StructField("cloudcover", DoubleType(), True),
+        StructField("solarradiation", DoubleType(), True),
+        StructField("solarenergy", DoubleType(), True),
+        StructField("uvindex", DoubleType(), True),
+        StructField("severerisk", DoubleType(), True),
+        StructField("conditions", StringType(), True),
+        StructField("icon", StringType(), True),
+        StructField("stations", ArrayType(StringType()), True),
+        StructField("source", StringType(), True)
+    ])
+
+    # 2. Schema cho dự báo từng ngày (chứa mảng các giờ)
+    day_schema = StructType([
+        StructField("datetime", StringType(), True),
+        StructField("datetimeEpoch", LongType(), True),
+        StructField("tempmax", DoubleType(), True),
+        StructField("tempmin", DoubleType(), True),
+        StructField("temp", DoubleType(), True),
+        StructField("feelslikemax", DoubleType(), True),
+        StructField("feelslikemin", DoubleType(), True),
+        StructField("feelslike", DoubleType(), True),
+        StructField("dew", DoubleType(), True),
+        StructField("humidity", DoubleType(), True),
+        StructField("precip", DoubleType(), True),
+        StructField("precipprob", DoubleType(), True),
+        StructField("precipcover", DoubleType(), True),
+        StructField("preciptype", ArrayType(StringType()), True),
+        StructField("snow", DoubleType(), True),
+        StructField("snowdepth", DoubleType(), True),
+        StructField("windgust", DoubleType(), True),
+        StructField("windspeed", DoubleType(), True),
+        StructField("winddir", DoubleType(), True),
+        StructField("pressure", DoubleType(), True),
+        StructField("cloudcover", DoubleType(), True),
+        StructField("visibility", DoubleType(), True),
+        StructField("solarradiation", DoubleType(), True),
+        StructField("solarenergy", DoubleType(), True),
+        StructField("uvindex", DoubleType(), True),
+        StructField("severerisk", DoubleType(), True),
+        StructField("sunrise", StringType(), True),
+        StructField("sunriseEpoch", LongType(), True),
+        StructField("sunset", StringType(), True),
+        StructField("sunsetEpoch", LongType(), True),
+        StructField("moonphase", DoubleType(), True),
+        StructField("conditions", StringType(), True),
+        StructField("description", StringType(), True),
+        StructField("icon", StringType(), True),
+        StructField("stations", ArrayType(StringType()), True),
+        StructField("source", StringType(), True),
+        StructField("hours", ArrayType(hour_schema), True) 
+    ])
+
+    # 3. Schema thời tiết hiện tại
     current_conditions_schema = StructType([
         StructField("datetime", StringType(), True),
         StructField("datetimeEpoch", LongType(), True),
@@ -72,10 +142,13 @@ def main():
         StructField("moonphase", DoubleType(), True)
     ])
 
+    # 4. Schema gốc chứa tất cả 
     weather_schema = StructType([
+        StructField("address", StringType(), True), 
         StructField("resolvedAddress", StringType(), True),
         StructField("timezone", StringType(), True),
-        StructField("currentConditions", current_conditions_schema, True)
+        StructField("currentConditions", current_conditions_schema, True),
+        StructField("days", ArrayType(day_schema), True) 
     ])
 
     raw_stream = spark.readStream \
@@ -90,9 +163,9 @@ def main():
         .selectExpr("CAST(value AS STRING) as json_string")
         .select(from_json(col("json_string"), weather_schema).alias("data"))
         .select(
-            col("data.resolvedAddress").alias("Location"),
+            coalesce(col("data.address"), col("data.resolvedAddress")).alias("Location"), 
             col("data.timezone").alias("Timezone"),
-            col("data.currentConditions.datetime").alias("Local_Time"),
+            from_unixtime(col("data.currentConditions.datetimeEpoch"), "yyyy-MM-dd'T'HH:mm:ss").alias("Local_Time"),
             col("data.currentConditions.temp").alias("Temp_C"),
             col("data.currentConditions.feelslike").alias("Feels_Like"),
             col("data.currentConditions.humidity").alias("Humidity_%"),
@@ -117,7 +190,8 @@ def main():
             col("data.currentConditions.sunset").alias("Sunset"),
             col("data.currentConditions.moonphase").alias("Moon_Phase"),
             col("data.currentConditions.stations").alias("Stations"),
-            col("data.currentConditions.source").alias("Source")
+            col("data.currentConditions.source").alias("Source"),
+            col("data.days").alias("Forecast_15_Days") 
         )
     )
 
