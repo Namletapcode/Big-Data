@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 ES_HOST = os.getenv("ES_HOST", "http://elasticsearch:9200")
 ES_INDEX = os.getenv("ES_INDEX", "weather_realtime")
+ES_INDEX_BATCH_DAILY = os.getenv("ES_INDEX_BATCH_DAILY", "weather_batch_daily")
+ES_INDEX_BATCH_STATS = os.getenv("ES_INDEX_BATCH_STATS", "weather_batch_stats")
 
 router = APIRouter()
 
@@ -24,7 +26,6 @@ def get_es_client() -> Elasticsearch:
 def build_location_query(location: Optional[str]) -> Dict[str, Any]:
     if not location:
         return {"match_all": {}}
-    # Location là text (analyzed). Dùng keyword để match chính xác theo string.
     return {"term": {"Location.keyword": location}}
 
 
@@ -60,7 +61,7 @@ def get_latest_weather(
             body={
                 "size": 1,
                 "query": query,
-                "sort": [{"Local_Time.keyword": {"order": "desc"}}],
+                "sort": [{"Local_Time": {"order": "desc"}}],
             },
         )
     except Exception as e:
@@ -120,4 +121,59 @@ def list_locations(limit: int = Query(20, ge=1, le=100)) -> List[str]:
 
     buckets = resp.get("aggregations", {}).get("locations", {}).get("buckets", [])
     return [b["key"] for b in buckets]
+
+
+@router.get("/weather/batch/daily")
+def get_batch_daily(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ lấy tất cả dữ liệu batch.",
+    ),
+    limit: int = Query(50, ge=1, le=500, description="Số bản ghi batch tối đa cần trả về"),
+) -> List[Dict[str, Any]]:
+    es = get_es_client()
+    query = build_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": limit,
+                "query": query,
+                "sort": [{"date": {"order": "desc"}}],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    hits = resp.get("hits", {}).get("hits", [])
+    return [h.get("_source", {}) for h in hits]
+
+
+@router.get("/weather/batch/summary")
+def get_batch_summary(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ lấy tổng hợp batch cho tất cả địa điểm.",
+    )
+) -> Dict[str, Any]:
+    es = get_es_client()
+    query = build_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_STATS,
+            body={
+                "size": 1,
+                "query": query,
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    hits = resp.get("hits", {}).get("hits", [])
+    if not hits:
+        raise HTTPException(status_code=404, detail="Không tìm thấy dữ liệu batch cho location này")
+
+    return hits[0].get("_source", {})
 
