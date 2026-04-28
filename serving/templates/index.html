@@ -5,6 +5,7 @@
     <title>Thời tiết realtime</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/static/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   </head>
   <body>
     <div class="app">
@@ -14,6 +15,7 @@
       </header>
 
       <main class="app-main">
+        <!-- Current Weather -->
         <section class="card">
           <div class="form-row">
             <label for="location">Chọn địa điểm</label>
@@ -85,40 +87,90 @@
             </div>
           </div>
         </section>
+
+        <!-- Chart Section -->
+        <section class="card chart-section">
+          <div class="chart-header">
+            <h2 class="chart-title">📊 Biểu đồ thời tiết</h2>
+            <div class="time-range-btns">
+              <button class="range-btn active" data-days="7">7 ngày</button>
+              <button class="range-btn" data-days="30">1 tháng</button>
+              <button class="range-btn" data-days="90">3 tháng</button>
+              <button class="range-btn" data-days="365">1 năm</button>
+            </div>
+          </div>
+
+          <div class="metric-tabs">
+            <button class="metric-tab active" data-metric="temp">
+              <span class="tab-icon">🌡️</span><span class="tab-label">Nhiệt độ</span>
+            </button>
+            <button class="metric-tab" data-metric="precip">
+              <span class="tab-icon">🌧️</span><span class="tab-label">Lượng mưa</span>
+            </button>
+            <button class="metric-tab" data-metric="humidity">
+              <span class="tab-icon">💧</span><span class="tab-label">Độ ẩm</span>
+            </button>
+            <button class="metric-tab" data-metric="wind">
+              <span class="tab-icon">💨</span><span class="tab-label">Gió</span>
+            </button>
+            <button class="metric-tab" data-metric="pressure">
+              <span class="tab-icon">🔽</span><span class="tab-label">Áp suất</span>
+            </button>
+          </div>
+
+          <div id="chart-status" class="status"></div>
+
+          <div class="chart-container">
+            <canvas id="weatherChart"></canvas>
+          </div>
+
+          <div id="chart-summary" class="chart-summary hidden">
+            <div class="summary-item">
+              <span class="summary-label">Trung bình</span>
+              <span id="sum-avg" class="summary-value"></span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Thấp nhất</span>
+              <span id="sum-min" class="summary-value"></span>
+            </div>
+            <div class="summary-item">
+              <span class="summary-label">Cao nhất</span>
+              <span id="sum-max" class="summary-value"></span>
+            </div>
+          </div>
+        </section>
       </main>
 
       <footer class="app-footer">
-        <span>Big Data project - Lambda Architecture · Speed + Serving layer</span>
+        <span>Big Data project - Lambda Architecture · Speed + Batch + Serving layer</span>
       </footer>
     </div>
 
     <script>
       const $ = (id) => document.getElementById(id);
 
+      /* ---------- Current Weather ---------- */
       async function fetchLatest() {
         const loc = $("location").value;
         if (!loc) {
-          $("status").textContent = "Chưa có location nào. Hãy đợi crawler + Spark chạy.";
+          $("status").textContent = "Chưa có location nào.";
           $("status").className = "status status-warn";
           return;
         }
-
         $("status").textContent = "Đang tải dữ liệu...";
         $("status").className = "status status-info";
-
         try {
           const params = new URLSearchParams({ location: loc });
-          const res = await fetch(`/api/weather/latest?${params.toString()}`);
+          const res = await fetch(`/api/weather/latest?${params}`);
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.detail || res.statusText);
           }
-          const data = await res.json();
-          renderWeather(data);
+          renderWeather(await res.json());
           $("status").textContent = "Đã tải dữ liệu mới nhất.";
           $("status").className = "status status-ok";
         } catch (e) {
-          $("status").textContent = "Lỗi khi lấy dữ liệu: " + e.message;
+          $("status").textContent = "Lỗi: " + e.message;
           $("status").className = "status status-error";
         }
       }
@@ -127,41 +179,218 @@
         $("weather-card").classList.remove("hidden");
         $("w-location").textContent = d.Location || "N/A";
         $("w-time").textContent = "Local time: " + (d.Local_Time || "N/A");
-
         $("w-temp").textContent = (d.Temp_C != null ? d.Temp_C.toFixed(1) : "?") + " °C";
-        $("w-feels").textContent =
-          "Cảm giác như: " +
-          (d.Feels_Like != null ? d.Feels_Like.toFixed(1) + " °C" : "N/A");
-
+        $("w-feels").textContent = "Cảm giác như: " + (d.Feels_Like != null ? d.Feels_Like.toFixed(1) + " °C" : "N/A");
         $("w-cond").textContent = d.Conditions || "N/A";
         $("w-uv").textContent = "UV " + (d.UV_Index != null ? d.UV_Index : "?");
-
-        const humidity = d["Humidity_%"];
-        $("w-humidity").textContent = (humidity != null ? humidity : "?") + " %";
-        $("w-precip").textContent =
-          (d.Precip_mm != null ? d.Precip_mm : "?") + " mm";
-        $("w-wind").textContent =
-          (d.Wind_Speed != null ? d.Wind_Speed : "?") +
-          " km/h" +
-          (d.Wind_Dir != null ? " · hướng " + d.Wind_Dir + "°" : "");
-        $("w-pressure").textContent =
-          (d.Pressure_hPa != null ? d.Pressure_hPa : "?") + " hPa";
-        const cloudCover = d["Cloud_Cover_%"];
-        $("w-cloud").textContent = (cloudCover != null ? cloudCover : "?") + " %";
-        $("w-visibility").textContent =
-          (d.Visibility_km != null ? d.Visibility_km : "?") + " km";
-
+        $("w-humidity").textContent = (d["Humidity_%"] != null ? d["Humidity_%"] : "?") + " %";
+        $("w-precip").textContent = (d.Precip_mm != null ? d.Precip_mm : "?") + " mm";
+        $("w-wind").textContent = (d.Wind_Speed != null ? d.Wind_Speed : "?") + " km/h" + (d.Wind_Dir != null ? " · " + d.Wind_Dir + "°" : "");
+        $("w-pressure").textContent = (d.Pressure_hPa != null ? d.Pressure_hPa : "?") + " hPa";
+        $("w-cloud").textContent = (d["Cloud_Cover_%"] != null ? d["Cloud_Cover_%"] : "?") + " %";
+        $("w-visibility").textContent = (d.Visibility_km != null ? d.Visibility_km : "?") + " km";
         $("w-sunrise").textContent = d.Sunrise || "N/A";
         $("w-sunset").textContent = d.Sunset || "N/A";
       }
 
+      /* ---------- Chart ---------- */
+      const METRICS = {
+        temp: {
+          label: "Nhiệt độ (°C)",
+          fields: ["avg_temp", "min_temp", "max_temp"],
+          colors: ["#f97316", "rgba(56,189,248,0.6)", "rgba(239,68,68,0.6)"],
+          labels: ["Trung bình", "Thấp nhất", "Cao nhất"],
+          fills: [true, false, false],
+          unit: "°C",
+          valueKey: "avg_temp",
+        },
+        precip: {
+          label: "Lượng mưa (mm)",
+          fields: ["total_precip"],
+          colors: ["#38bdf8"],
+          labels: ["Tổng lượng mưa"],
+          fills: [true],
+          unit: "mm",
+          valueKey: "total_precip",
+          chartType: "bar",
+        },
+        humidity: {
+          label: "Độ ẩm (%)",
+          fields: ["avg_humidity"],
+          colors: ["#06b6d4"],
+          labels: ["Trung bình"],
+          fills: [true],
+          unit: "%",
+          valueKey: "avg_humidity",
+        },
+        wind: {
+          label: "Tốc độ gió (km/h)",
+          fields: ["avg_wind"],
+          colors: ["#22c55e"],
+          labels: ["Trung bình"],
+          fills: [true],
+          unit: "km/h",
+          valueKey: "avg_wind",
+        },
+        pressure: {
+          label: "Áp suất (hPa)",
+          fields: ["avg_pressure"],
+          colors: ["#a78bfa"],
+          labels: ["Trung bình"],
+          fills: [true],
+          unit: "hPa",
+          valueKey: "avg_pressure",
+        },
+      };
+
+      let chartInstance = null;
+      let chartData = [];
+      let currentMetric = "temp";
+      let currentDays = 7;
+
+      async function fetchChartData() {
+        const loc = $("location").value;
+        if (!loc) return;
+
+        $("chart-status").textContent = "Đang tải biểu đồ...";
+        $("chart-status").className = "status status-info";
+
+        try {
+          const params = new URLSearchParams({ location: loc, days: currentDays });
+          const res = await fetch(`/api/weather/chart?${params}`);
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+          const json = await res.json();
+          chartData = json.data || [];
+          renderChart();
+          $("chart-status").textContent = chartData.length
+            ? `Hiển thị ${chartData.length} ngày dữ liệu.`
+            : "Chưa có dữ liệu batch cho location này.";
+          $("chart-status").className = "status " + (chartData.length ? "status-ok" : "status-warn");
+        } catch (e) {
+          $("chart-status").textContent = "Lỗi: " + e.message;
+          $("chart-status").className = "status status-error";
+        }
+      }
+
+      function renderChart() {
+        const cfg = METRICS[currentMetric];
+        const labels = chartData.map((d) => d.date);
+        const datasets = cfg.fields.map((f, i) => {
+          const data = chartData.map((d) => d[f]);
+          const color = cfg.colors[i];
+          const base = {
+            label: cfg.labels[i],
+            data,
+            borderColor: color,
+            backgroundColor: cfg.fills[i] ? color.replace(")", ",0.12)").replace("rgb", "rgba") : "transparent",
+            borderWidth: 2,
+            pointRadius: chartData.length > 60 ? 0 : 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: color,
+            tension: 0.35,
+            fill: cfg.fills[i],
+          };
+          if (cfg.chartType === "bar") {
+            base.type = "bar";
+            base.backgroundColor = color.replace(")", ",0.55)").replace("rgb", "rgba");
+            base.borderRadius = 6;
+            base.borderWidth = 0;
+          }
+          return base;
+        });
+
+        if (chartInstance) chartInstance.destroy();
+
+        const ctx = $("weatherChart").getContext("2d");
+        chartInstance = new Chart(ctx, {
+          type: cfg.chartType === "bar" ? "bar" : "line",
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { display: datasets.length > 1, labels: { color: "#9ca3af", font: { size: 12 } } },
+              tooltip: {
+                backgroundColor: "rgba(15,23,42,0.95)",
+                titleColor: "#e5e7eb",
+                bodyColor: "#e5e7eb",
+                borderColor: "rgba(148,163,184,0.3)",
+                borderWidth: 1,
+                padding: 12,
+                cornerRadius: 8,
+                callbacks: {
+                  label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y != null ? ctx.parsed.y : "N/A"} ${cfg.unit}`,
+                },
+              },
+            },
+            scales: {
+              x: {
+                grid: { color: "rgba(148,163,184,0.08)" },
+                ticks: { color: "#9ca3af", maxRotation: 45, font: { size: 11 } },
+              },
+              y: {
+                grid: { color: "rgba(148,163,184,0.08)" },
+                ticks: { color: "#9ca3af", font: { size: 11 } },
+                title: { display: true, text: cfg.label, color: "#9ca3af" },
+              },
+            },
+          },
+        });
+
+        // Summary
+        const vals = chartData.map((d) => d[cfg.valueKey]).filter((v) => v != null);
+        if (vals.length) {
+          $("chart-summary").classList.remove("hidden");
+          const avg = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
+          $("sum-avg").textContent = avg + " " + cfg.unit;
+          $("sum-min").textContent = Math.min(...vals).toFixed(1) + " " + cfg.unit;
+          $("sum-max").textContent = Math.max(...vals).toFixed(1) + " " + cfg.unit;
+        } else {
+          $("chart-summary").classList.add("hidden");
+        }
+      }
+
+      /* ---------- Event Listeners ---------- */
       document.addEventListener("DOMContentLoaded", () => {
-        $("refresh-btn").addEventListener("click", fetchLatest);
+        $("refresh-btn").addEventListener("click", () => {
+          fetchLatest();
+          fetchChartData();
+        });
+
+        // Time range buttons
+        document.querySelectorAll(".range-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            document.querySelectorAll(".range-btn").forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            currentDays = parseInt(btn.dataset.days);
+            fetchChartData();
+          });
+        });
+
+        // Metric tabs
+        document.querySelectorAll(".metric-tab").forEach((tab) => {
+          tab.addEventListener("click", () => {
+            document.querySelectorAll(".metric-tab").forEach((t) => t.classList.remove("active"));
+            tab.classList.add("active");
+            currentMetric = tab.dataset.metric;
+            if (chartData.length) renderChart();
+            else fetchChartData();
+          });
+        });
+
+        // Location change
+        $("location").addEventListener("change", () => {
+          fetchLatest();
+          fetchChartData();
+        });
+
+        // Initial load
         if ($("location").value) {
           fetchLatest();
+          fetchChartData();
         }
       });
     </script>
   </body>
 </html>
-
