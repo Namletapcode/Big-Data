@@ -88,10 +88,43 @@
           </div>
         </section>
 
+        <!-- Batch Summary Section -->
+        <section id="batch-summary-section" class="card hidden">
+          <h2>Báo cáo Thống kê Toàn thời gian (Batch Data)</h2>
+          <div class="weather-grid">
+            <div class="item">
+              <span class="label">Nóng nhất lịch sử</span>
+              <span id="bs-hottest" class="value"></span>
+            </div>
+            <div class="item">
+              <span class="label">Lạnh nhất lịch sử</span>
+              <span id="bs-coldest" class="value"></span>
+            </div>
+            <div class="item">
+              <span class="label">Ngày nóng nhất</span>
+              <span id="bs-hottest-date" class="value"></span>
+            </div>
+            <div class="item">
+              <span class="label">Ngày lạnh nhất</span>
+              <span id="bs-coldest-date" class="value"></span>
+            </div>
+          </div>
+          <div class="sun-row" style="margin-top:1.5rem">
+            <div>
+              <span class="label">Đợt nóng dài nhất (Ngày)</span>
+              <span id="bs-heatwave-days" class="value" style="color:var(--error); font-size:1.5rem"></span>
+            </div>
+            <div style="text-align:right">
+              <span class="label">Thời gian đợt nóng</span>
+              <span id="bs-heatwave-time" class="value"></span>
+            </div>
+          </div>
+        </section>
+
         <!-- Chart Section -->
         <section class="card chart-section">
           <div class="chart-header">
-            <h2 class="chart-title">📊 Biểu đồ thời tiết</h2>
+            <h2 class="chart-title">📊 Biểu đồ thời tiết (Từ Batch)</h2>
             <div class="time-range-btns">
               <button class="range-btn active" data-days="7">7 ngày</button>
               <button class="range-btn" data-days="30">1 tháng</button>
@@ -109,12 +142,6 @@
             </button>
             <button class="metric-tab" data-metric="humidity">
               <span class="tab-icon">💧</span><span class="tab-label">Độ ẩm</span>
-            </button>
-            <button class="metric-tab" data-metric="wind">
-              <span class="tab-icon">💨</span><span class="tab-label">Gió</span>
-            </button>
-            <button class="metric-tab" data-metric="pressure">
-              <span class="tab-icon">🔽</span><span class="tab-label">Áp suất</span>
             </button>
           </div>
 
@@ -193,6 +220,34 @@
         $("w-sunset").textContent = d.Sunset || "N/A";
       }
 
+      /* ---------- Batch Summary ---------- */
+      async function fetchBatchSummary() {
+        const loc = $("location").value;
+        if (!loc) return;
+        try {
+          const batchLoc = loc.includes(", ") ? loc.split(", ")[0] : loc;
+          const params = new URLSearchParams({ location: batchLoc });
+          const res = await fetch(`/api/weather/batch/summary?location=${encodeURIComponent(batchLoc)}`);
+          if (!res.ok) throw new Error("No data");
+          const d = await res.json();
+          
+          $("batch-summary-section").classList.remove("hidden");
+          $("bs-hottest").textContent = (d.hottest_temp != null ? d.hottest_temp.toFixed(1) : "?") + " °C";
+          $("bs-coldest").textContent = (d.coldest_temp != null ? d.coldest_temp.toFixed(1) : "?") + " °C";
+          $("bs-hottest-date").textContent = d.hottest_date || "N/A";
+          $("bs-coldest-date").textContent = d.coldest_date || "N/A";
+          
+          $("bs-heatwave-days").textContent = d.longest_heatwave_days || 0;
+          if (d.longest_heatwave_days > 0) {
+              $("bs-heatwave-time").textContent = `${d.heatwave_start} đến ${d.heatwave_end} (Đỉnh: ${d.heatwave_max_temp}°C)`;
+          } else {
+              $("bs-heatwave-time").textContent = "Không có ghi nhận";
+          }
+        } catch (e) {
+          $("batch-summary-section").classList.add("hidden");
+        }
+      }
+
       /* ---------- Chart ---------- */
       const METRICS = {
         temp: {
@@ -222,25 +277,7 @@
           fills: [true],
           unit: "%",
           valueKey: "avg_humidity",
-        },
-        wind: {
-          label: "Tốc độ gió (km/h)",
-          fields: ["avg_wind"],
-          colors: ["#22c55e"],
-          labels: ["Trung bình"],
-          fills: [true],
-          unit: "km/h",
-          valueKey: "avg_wind",
-        },
-        pressure: {
-          label: "Áp suất (hPa)",
-          fields: ["avg_pressure"],
-          colors: ["#a78bfa"],
-          labels: ["Trung bình"],
-          fills: [true],
-          unit: "hPa",
-          valueKey: "avg_pressure",
-        },
+        }
       };
 
       let chartInstance = null;
@@ -263,7 +300,7 @@
           chartData = json.data || [];
           renderChart();
           $("chart-status").textContent = chartData.length
-            ? `Hiển thị ${chartData.length} ngày dữ liệu.`
+            ? `Hiển thị ${chartData.length} ngày dữ liệu từ Batch Layer.`
             : "Chưa có dữ liệu batch cho location này.";
           $("chart-status").className = "status " + (chartData.length ? "status-ok" : "status-warn");
         } catch (e) {
@@ -356,6 +393,7 @@
         $("refresh-btn").addEventListener("click", () => {
           fetchLatest();
           fetchChartData();
+          fetchBatchSummary();
         });
 
         // Time range buttons
@@ -383,12 +421,14 @@
         $("location").addEventListener("change", () => {
           fetchLatest();
           fetchChartData();
+          fetchBatchSummary();
         });
 
         // Initial load
         if ($("location").value) {
           fetchLatest();
           fetchChartData();
+          fetchBatchSummary();
         }
       });
     </script>
