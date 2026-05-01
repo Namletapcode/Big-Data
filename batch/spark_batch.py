@@ -10,7 +10,7 @@ import os
 #--- ENV CONFIF --- 
 MINIO_USER = os.getenv("MINIO_ROOT_USER", "admin")
 MINIO_PASS = os.getenv("MINIO_ROOT_PASSWORD", "password123")
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://35.240.199.161:9000")
 ES_HOST = os.getenv("ES_HOST", "elasticsearch")
 ES_INDEX_DAILY = "weather_batch_daily"
 ES_INDEX_STATS = "weather_batch_stats"

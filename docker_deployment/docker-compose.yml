@@ -141,7 +141,7 @@ services:
       - ES_HOST=elasticsearch
       - MINIO_ROOT_USER=admin     
       - MINIO_ROOT_PASSWORD=password123
-      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ENDPOINT=http://35.240.199.161:9000
 
   kafka_connect:
     build:
