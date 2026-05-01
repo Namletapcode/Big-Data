@@ -88,6 +88,36 @@
           </div>
         </section>
 
+        <!-- Forecast Section -->
+        <section id="forecast-section" class="card forecast-section hidden">
+          <div class="forecast-hero">
+            <div>
+              <span class="forecast-kicker">Dự báo từ luồng streaming</span>
+              <h2 id="forecast-location">Dự báo thời tiết</h2>
+            </div>
+            <div class="forecast-now">
+              <span id="forecast-now-temp"></span>
+              <span id="forecast-now-range"></span>
+            </div>
+          </div>
+
+          <div class="forecast-panel">
+            <div class="forecast-panel-title">
+              <span>Dự báo theo giờ</span>
+              <span id="hourly-subtitle"></span>
+            </div>
+            <div id="hourly-forecast" class="hourly-forecast"></div>
+          </div>
+
+          <div class="forecast-panel">
+            <div class="forecast-panel-title">
+              <span>10 ngày tới</span>
+              <span>Nhiệt độ cao / thấp</span>
+            </div>
+            <div id="daily-forecast" class="daily-forecast"></div>
+          </div>
+        </section>
+
         <!-- Batch Summary Section -->
         <section id="batch-summary-section" class="card hidden">
           <h2>Báo cáo Thống kê Toàn thời gian (Batch Data)</h2>
@@ -218,6 +248,111 @@
         $("w-visibility").textContent = (d.Visibility_km != null ? d.Visibility_km : "?") + " km";
         $("w-sunrise").textContent = d.Sunrise || "N/A";
         $("w-sunset").textContent = d.Sunset || "N/A";
+        renderForecast(d);
+      }
+
+      /* ---------- Forecast ---------- */
+      const WEATHER_ICON = {
+        "clear-day": "☀️",
+        "clear-night": "🌙",
+        "partly-cloudy-day": "⛅",
+        "partly-cloudy-night": "☁️",
+        cloudy: "☁️",
+        rain: "🌧️",
+        snow: "❄️",
+        fog: "🌫️",
+        wind: "💨",
+        "showers-day": "🌦️",
+        "showers-night": "🌧️",
+        thunder: "⛈️",
+        "thunder-rain": "⛈️",
+      };
+
+      function weatherIcon(icon) {
+        return WEATHER_ICON[icon] || "🌤️";
+      }
+
+      function fmtTemp(v) {
+        return v != null ? Math.round(Number(v)) + "°" : "--";
+      }
+
+      function fmtHour(datetime) {
+        if (!datetime) return "--";
+        const parts = datetime.split(":");
+        return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : datetime;
+      }
+
+      function fmtDay(dateText, idx) {
+        if (idx === 0) return "Hôm nay";
+        if (!dateText) return "--";
+        const date = new Date(`${dateText}T00:00:00`);
+        if (Number.isNaN(date.getTime())) return dateText;
+        return date.toLocaleDateString("vi-VN", { weekday: "short" });
+      }
+
+      function pickHourlyForecast(days, localTime) {
+        const todayHours = (days[0] && days[0].hours) || [];
+        const tomorrowHours = (days[1] && days[1].hours) || [];
+        const allHours = todayHours.concat(tomorrowHours);
+        if (!allHours.length) return [];
+
+        const currentHour = localTime ? Number(localTime.slice(11, 13)) : null;
+        const startIndex = Number.isFinite(currentHour)
+          ? Math.max(0, allHours.findIndex((h) => Number((h.datetime || "").slice(0, 2)) >= currentHour))
+          : 0;
+
+        return allHours.slice(startIndex === -1 ? 0 : startIndex, (startIndex === -1 ? 0 : startIndex) + 24);
+      }
+
+      function renderForecast(d) {
+        const days = Array.isArray(d.Forecast_15_Days) ? d.Forecast_15_Days : [];
+        if (!days.length) {
+          $("forecast-section").classList.add("hidden");
+          return;
+        }
+
+        $("forecast-section").classList.remove("hidden");
+        $("forecast-location").textContent = d.Location || "Dự báo thời tiết";
+        $("forecast-now-temp").textContent = fmtTemp(d.Temp_C);
+        $("forecast-now-range").textContent = `${fmtTemp(days[0].tempmax)} / ${fmtTemp(days[0].tempmin)}`;
+        $("hourly-subtitle").textContent = days[0].conditions || "";
+
+        const hourly = pickHourlyForecast(days, d.Local_Time);
+        $("hourly-forecast").innerHTML = hourly.map((h, idx) => `
+          <div class="hour-card">
+            <span class="hour-time">${idx === 0 ? "Bây giờ" : fmtHour(h.datetime)}</span>
+            <span class="hour-icon" aria-hidden="true">${weatherIcon(h.icon)}</span>
+            <span class="hour-temp">${fmtTemp(h.temp)}</span>
+            <span class="hour-rain">${h.precipprob != null ? Math.round(h.precipprob) + "%" : ""}</span>
+          </div>
+        `).join("");
+
+        const temps = days
+          .slice(0, 10)
+          .flatMap((day) => [day.tempmin, day.tempmax])
+          .filter((v) => v != null)
+          .map(Number);
+        const minTemp = temps.length ? Math.min(...temps) : 0;
+        const maxTemp = temps.length ? Math.max(...temps) : 1;
+        const span = Math.max(1, maxTemp - minTemp);
+
+        $("daily-forecast").innerHTML = days.slice(0, 10).map((day, idx) => {
+          const low = Number(day.tempmin);
+          const high = Number(day.tempmax);
+          const start = Number.isFinite(low) ? ((low - minTemp) / span) * 100 : 0;
+          const width = Number.isFinite(high) && Number.isFinite(low) ? Math.max(8, ((high - low) / span) * 100) : 20;
+
+          return `
+            <div class="day-row">
+              <span class="day-name">${fmtDay(day.datetime, idx)}</span>
+              <span class="day-icon" aria-hidden="true">${weatherIcon(day.icon)}</span>
+              <span class="day-rain">${day.precipprob != null ? Math.round(day.precipprob) + "%" : ""}</span>
+              <span class="day-low">${fmtTemp(day.tempmin)}</span>
+              <span class="temp-track"><span style="left:${start}%; width:${width}%"></span></span>
+              <span class="day-high">${fmtTemp(day.tempmax)}</span>
+            </div>
+          `;
+        }).join("");
       }
 
       /* ---------- Batch Summary ---------- */

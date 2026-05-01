@@ -1,4 +1,5 @@
 import os
+from datetime import date as date_cls
 from typing import Optional, List, Any, Dict
 
 from elasticsearch import Elasticsearch
@@ -173,6 +174,10 @@ def get_batch_summary(
 
     hits = resp.get("hits", {}).get("hits", [])
     if not hits:
+        if location:
+            fallback = build_batch_summary_from_daily(es, location)
+            if fallback:
+                return fallback
         raise HTTPException(status_code=404, detail="Không tìm thấy dữ liệu batch cho location này")
 
     return hits[0].get("_source", {})
@@ -186,6 +191,118 @@ def _r(v):
         return round(float(v), 1)
     except (TypeError, ValueError):
         return v
+
+
+def build_batch_summary_from_daily(es: Elasticsearch, location: str) -> Optional[Dict[str, Any]]:
+    """Fallback when weather_batch_stats is empty: derive summary from daily aggregates."""
+    daily_query = {"term": {"Location.keyword": location}}
+
+    try:
+        hottest_resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 1,
+                "query": daily_query,
+                "sort": [
+                    {"max_temp": {"order": "desc"}},
+                    {"avg_temp": {"order": "desc"}},
+                ],
+            },
+        )
+        coldest_resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 1,
+                "query": daily_query,
+                "sort": [
+                    {"min_temp": {"order": "asc"}},
+                    {"avg_temp": {"order": "asc"}},
+                ],
+            },
+        )
+        latest_resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 1,
+                "query": daily_query,
+                "sort": [{"date": {"order": "desc"}}],
+            },
+        )
+        heat_resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 5000,
+                "query": daily_query,
+                "sort": [{"date": {"order": "asc"}}],
+                "_source": ["Location", "date", "avg_temp", "max_temp"],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    hottest_hits = hottest_resp.get("hits", {}).get("hits", [])
+    coldest_hits = coldest_resp.get("hits", {}).get("hits", [])
+    latest_hits = latest_resp.get("hits", {}).get("hits", [])
+    if not hottest_hits or not coldest_hits or not latest_hits:
+        return None
+
+    longest = {
+        "longest_heatwave_days": 0,
+        "heatwave_start": "",
+        "heatwave_end": "",
+        "heatwave_max_temp": 0.0,
+    }
+    current = None
+    previous_date = None
+
+    for hit in heat_resp.get("hits", {}).get("hits", []):
+        src = hit.get("_source", {})
+        date = src.get("date")
+        avg_temp = src.get("avg_temp")
+        max_temp = src.get("max_temp") or 0.0
+        is_heat_day = avg_temp is not None and float(avg_temp) >= 30.0
+
+        if not is_heat_day:
+            current = None
+            previous_date = date
+            continue
+
+        consecutive = False
+        if current and previous_date and date:
+            previous = date_cls.fromisoformat(previous_date)
+            current_date = date_cls.fromisoformat(date)
+            consecutive = (current_date - previous).days == 1
+
+        if not current or not consecutive:
+            current = {
+                "longest_heatwave_days": 0,
+                "heatwave_start": date,
+                "heatwave_end": date,
+                "heatwave_max_temp": 0.0,
+            }
+
+        current["longest_heatwave_days"] += 1
+        current["heatwave_end"] = date
+        current["heatwave_max_temp"] = max(float(current["heatwave_max_temp"]), float(max_temp))
+        if current["longest_heatwave_days"] > longest["longest_heatwave_days"]:
+            longest = current.copy()
+
+        previous_date = date
+
+    hottest = hottest_hits[0].get("_source", {})
+    coldest = coldest_hits[0].get("_source", {})
+    latest = latest_hits[0].get("_source", {})
+
+    return {
+        "Location": location,
+        "hottest_date": hottest.get("date"),
+        "hottest_temp": hottest.get("max_temp"),
+        "coldest_date": coldest.get("date"),
+        "coldest_temp": coldest.get("min_temp"),
+        "latest_date": latest.get("date"),
+        "latest_avg_temp": latest.get("avg_temp"),
+        **longest,
+    }
 
 
 @router.get("/weather/chart")

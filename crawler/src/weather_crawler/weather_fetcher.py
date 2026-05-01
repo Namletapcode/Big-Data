@@ -4,6 +4,7 @@ import requests
 import json
 import logging
 import time
+from datetime import date, timedelta
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,12 +25,14 @@ idx = get_state(STATE_FILE, 'key_idx')
 params = {
     'unitGroup': 'metric',
     'contentType': 'json',
-    'include': 'current'
+    'include': 'current,days,hours'
 }
 
 def fetch_weather_data(lat, lon, max_iter=10, interval=0.2):
     global idx
-    url = f'{BASE_URL}/{lat},{lon}/today'
+    start_date = date.today()
+    end_date = start_date + timedelta(days=14)
+    url = f'{BASE_URL}/{lat},{lon}/{start_date.isoformat()}/{end_date.isoformat()}'
 
     for _ in range(max_iter):
         try:
