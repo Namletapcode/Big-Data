@@ -308,20 +308,35 @@ def build_batch_summary_from_daily(es: Elasticsearch, location: str) -> Optional
 @router.get("/weather/chart")
 def get_chart_data(
     location: str = Query(..., description="Địa điểm (realtime format, e.g. 'Hà Nội, VN')"),
-    days: int = Query(7, ge=1, le=365, description="Số ngày"),
+    days: int = Query(30, ge=1, le=365, description="Số ngày dùng khi không truyền date range"),
+    start_date: Optional[date_cls] = Query(None, description="Ngày bắt đầu, định dạng YYYY-MM-DD"),
+    end_date: Optional[date_cls] = Query(None, description="Ngày kết thúc, định dạng YYYY-MM-DD"),
 ) -> Dict[str, Any]:
     """Lấy dữ liệu biểu đồ hoàn toàn từ batch daily (temp, humidity, precip)."""
     es = get_es_client()
 
     batch_loc = location.rsplit(", ", 1)[0] if ", " in location else location
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=400, detail="start_date phải nhỏ hơn hoặc bằng end_date")
+
+    filters: List[Dict[str, Any]] = [{"term": {"Location.keyword": batch_loc}}]
+    if start_date or end_date:
+        date_range: Dict[str, str] = {}
+        if start_date:
+            date_range["gte"] = start_date.isoformat()
+        if end_date:
+            date_range["lte"] = end_date.isoformat()
+        filters.append({"range": {"date": date_range}})
+
+    size = 1000 if start_date or end_date else days
 
     chart_map: Dict[str, Dict[str, Any]] = {}
     try:
         batch_resp = es.search(
             index=ES_INDEX_BATCH_DAILY,
             body={
-                "size": days,
-                "query": {"term": {"Location.keyword": batch_loc}},
+                "size": size,
+                "query": {"bool": {"filter": filters}},
                 "sort": [{"date": {"order": "desc"}}],
             },
         )
@@ -340,5 +355,14 @@ def get_chart_data(
     except Exception:
         pass
 
-    sorted_data = sorted(chart_map.values(), key=lambda x: x["date"])[-days:]
-    return {"location": location, "days": days, "data": sorted_data}
+    sorted_data = sorted(chart_map.values(), key=lambda x: x["date"])
+    if not (start_date or end_date):
+        sorted_data = sorted_data[-days:]
+
+    return {
+        "location": location,
+        "days": days,
+        "start_date": start_date.isoformat() if start_date else None,
+        "end_date": end_date.isoformat() if end_date else None,
+        "data": sorted_data,
+    }

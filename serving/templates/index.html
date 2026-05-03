@@ -2,7 +2,7 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <title>Thời tiết realtime</title>
+    <title>Weather Intelligence</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/static/styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
@@ -10,13 +10,14 @@
   <body>
     <div class="app">
       <header class="app-header">
-        <h1>Weather Realtime Dashboard</h1>
-        <p>Data từ Visual Crossing → Kafka → Spark → Elasticsearch → FastAPI</p>
+        <span class="eyebrow">Big Data Weather Platform</span>
+        <h1>Weather Intelligence</h1>
+        <p>Theo dõi thời tiết realtime, dự báo nhiều ngày và lịch sử khí hậu từ Spark + Elasticsearch.</p>
       </header>
 
       <main class="app-main">
         <!-- Current Weather -->
-        <section class="card">
+        <section class="card current-card">
           <div class="form-row">
             <label for="location">Chọn địa điểm</label>
             <select id="location">
@@ -28,7 +29,7 @@
               <option value="">(Chưa có dữ liệu - đợi pipeline chạy)</option>
               {% endif %}
             </select>
-            <button id="refresh-btn">Lấy thời tiết mới nhất</button>
+            <button id="refresh-btn">Cập nhật dữ liệu</button>
           </div>
 
           <div id="status" class="status"></div>
@@ -154,12 +155,38 @@
         <!-- Chart Section -->
         <section class="card chart-section">
           <div class="chart-header">
-            <h2 class="chart-title">📊 Biểu đồ thời tiết (Từ Batch)</h2>
-            <div class="time-range-btns">
-              <button class="range-btn active" data-days="7">7 ngày</button>
-              <button class="range-btn" data-days="30">1 tháng</button>
-              <button class="range-btn" data-days="90">3 tháng</button>
-              <button class="range-btn" data-days="365">1 năm</button>
+            <div>
+              <span class="section-kicker">Historical Weather</span>
+              <h2 class="chart-title">Lịch sử thời tiết theo khoảng ngày</h2>
+            </div>
+            <div class="date-range-panel">
+              <div class="date-field">
+                <label for="start-date">Từ ngày</label>
+                <input id="start-date" type="date" />
+              </div>
+              <div class="date-field">
+                <label for="end-date">Đến ngày</label>
+                <input id="end-date" type="date" />
+              </div>
+              <button id="apply-range-btn" class="secondary-btn">Xem lịch sử</button>
+            </div>
+          </div>
+
+          <div class="quick-range-row" aria-label="Chọn nhanh khoảng thời gian">
+            <button class="range-btn" data-days="7">7 ngày</button>
+            <button class="range-btn active" data-days="30">1 tháng</button>
+            <button class="range-btn" data-days="90">3 tháng</button>
+            <button class="range-btn" data-days="365">1 năm</button>
+          </div>
+
+          <div class="chart-meta-row">
+            <div>
+              <span class="meta-label">Khoảng dữ liệu</span>
+              <span id="selected-range-label" class="meta-value">--</span>
+            </div>
+            <div>
+              <span class="meta-label">Nguồn</span>
+              <span class="meta-value">Batch daily index</span>
             </div>
           </div>
 
@@ -205,6 +232,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
+      const DAY_MS = 24 * 60 * 60 * 1000;
 
       /* ---------- Current Weather ---------- */
       async function fetchLatest() {
@@ -418,7 +446,30 @@
       let chartInstance = null;
       let chartData = [];
       let currentMetric = "temp";
-      let currentDays = 7;
+      let currentDays = 30;
+
+      function toISODate(date) {
+        return date.toISOString().slice(0, 10);
+      }
+
+      function setDateRangeFromDays(days) {
+        currentDays = days;
+        const end = new Date();
+        const start = new Date(end.getTime() - (days - 1) * DAY_MS);
+        $("start-date").value = toISODate(start);
+        $("end-date").value = toISODate(end);
+        updateSelectedRangeLabel();
+      }
+
+      function updateSelectedRangeLabel() {
+        const start = $("start-date").value;
+        const end = $("end-date").value;
+        $("selected-range-label").textContent = start && end ? `${start} đến ${end}` : "Chọn khoảng ngày";
+      }
+
+      function clearQuickRangeSelection() {
+        document.querySelectorAll(".range-btn").forEach((btn) => btn.classList.remove("active"));
+      }
 
       async function fetchChartData() {
         const loc = $("location").value;
@@ -428,14 +479,23 @@
         $("chart-status").className = "status status-info";
 
         try {
+          const start = $("start-date").value;
+          const end = $("end-date").value;
+          if (start && end && start > end) {
+            throw new Error("Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.");
+          }
+
+          updateSelectedRangeLabel();
           const params = new URLSearchParams({ location: loc, days: currentDays });
+          if (start) params.set("start_date", start);
+          if (end) params.set("end_date", end);
           const res = await fetch(`/api/weather/chart?${params}`);
           if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
           const json = await res.json();
           chartData = json.data || [];
           renderChart();
           $("chart-status").textContent = chartData.length
-            ? `Hiển thị ${chartData.length} ngày dữ liệu từ Batch Layer.`
+            ? `Hiển thị ${chartData.length} ngày dữ liệu trong khoảng đã chọn.`
             : "Chưa có dữ liệu batch cho location này.";
           $("chart-status").className = "status " + (chartData.length ? "status-ok" : "status-warn");
         } catch (e) {
@@ -531,12 +591,24 @@
           fetchBatchSummary();
         });
 
-        // Time range buttons
+        $("apply-range-btn").addEventListener("click", fetchChartData);
+        $("start-date").addEventListener("change", () => {
+          clearQuickRangeSelection();
+          updateSelectedRangeLabel();
+          fetchChartData();
+        });
+        $("end-date").addEventListener("change", () => {
+          clearQuickRangeSelection();
+          updateSelectedRangeLabel();
+          fetchChartData();
+        });
+
+        // Quick range buttons
         document.querySelectorAll(".range-btn").forEach((btn) => {
           btn.addEventListener("click", () => {
             document.querySelectorAll(".range-btn").forEach((b) => b.classList.remove("active"));
             btn.classList.add("active");
-            currentDays = parseInt(btn.dataset.days);
+            setDateRangeFromDays(parseInt(btn.dataset.days));
             fetchChartData();
           });
         });
@@ -558,6 +630,8 @@
           fetchChartData();
           fetchBatchSummary();
         });
+
+        setDateRangeFromDays(currentDays);
 
         // Initial load
         if ($("location").value) {

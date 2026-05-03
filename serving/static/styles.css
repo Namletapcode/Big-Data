@@ -1,13 +1,18 @@
 :root {
-  --bg: #050816;
-  --bg-card: rgba(15, 23, 42, 0.9);
-  --accent: #38bdf8;
-  --accent-soft: rgba(56, 189, 248, 0.15);
+  --bg: #071425;
+  --bg-card: rgba(14, 24, 46, 0.72);
+  --bg-card-strong: rgba(12, 23, 44, 0.88);
+  --accent: #8fb7ff;
+  --accent-soft: rgba(96, 165, 250, 0.2);
+  --cyan: #60d7ff;
+  --purple: #7c3aed;
   --text: #e5e7eb;
-  --text-soft: #9ca3af;
+  --text-soft: #a7b2c7;
   --error: #f97373;
   --ok: #4ade80;
   --warn: #facc15;
+  --border: rgba(255, 255, 255, 0.14);
+  --shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
 }
 
 *,
@@ -20,9 +25,25 @@ body {
   margin: 0;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
     sans-serif;
-  background: radial-gradient(circle at top, #1e293b 0, #020617 40%, #000 100%);
+  background:
+    radial-gradient(circle at 18% -6%, rgba(125, 211, 252, 0.38), transparent 33%),
+    radial-gradient(circle at 82% 4%, rgba(129, 140, 248, 0.42), transparent 34%),
+    radial-gradient(circle at 50% 105%, rgba(14, 165, 233, 0.18), transparent 32%),
+    linear-gradient(155deg, #082f49 0%, #18234b 44%, #070b18 100%);
   color: var(--text);
   min-height: 100vh;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 52px 52px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent 72%);
 }
 
 .app {
@@ -32,20 +53,32 @@ body {
 }
 
 .app-header {
-  padding: 1.5rem 2rem 0.5rem;
+  padding: 2.35rem 2rem 0.9rem;
   text-align: center;
 }
 
+.eyebrow {
+  display: inline-block;
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
 .app-header h1 {
-  margin: 0;
-  font-size: 1.8rem;
-  letter-spacing: 0.03em;
+  margin: 0.25rem 0 0;
+  font-size: clamp(3rem, 7vw, 5.25rem);
+  line-height: 0.95;
+  font-weight: 800;
+  letter-spacing: -0.075em;
+  text-shadow: 0 18px 50px rgba(15, 23, 42, 0.5);
 }
 
 .app-header p {
-  margin: 0.5rem 0 0;
-  color: var(--text-soft);
-  font-size: 0.9rem;
+  margin: 0.85rem 0 0;
+  color: rgba(226, 232, 240, 0.74);
+  font-size: 1rem;
 }
 
 .app-main {
@@ -59,13 +92,19 @@ body {
 
 .card {
   width: 100%;
-  max-width: 760px;
+  max-width: 1080px;
   background: var(--bg-card);
-  border-radius: 1.25rem;
-  padding: 1.5rem 1.75rem;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  backdrop-filter: blur(20px);
+  border-radius: 2rem;
+  padding: 1.55rem 1.75rem;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(28px);
+}
+
+.current-card {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(125, 211, 252, 0.18), transparent 32%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(15, 23, 42, 0.58));
 }
 
 .form-row {
@@ -81,29 +120,47 @@ body {
   color: var(--text-soft);
 }
 
-select {
+select,
+input[type="date"] {
   flex: 1;
   min-width: 160px;
-  padding: 0.5rem 0.75rem;
+  padding: 0.7rem 1rem;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(5, 11, 25, 0.72);
   color: var(--text);
+  outline: none;
+  color-scheme: dark;
+}
+
+select:focus,
+input[type="date"]:focus {
+  border-color: rgba(147, 197, 253, 0.8);
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.16);
 }
 
 button {
-  padding: 0.55rem 1.2rem;
+  padding: 0.72rem 1.35rem;
   border-radius: 999px;
   border: none;
-  background: linear-gradient(135deg, var(--accent), #6366f1);
+  background: linear-gradient(135deg, #60a5fa, #8b5cf6);
   color: white;
-  font-weight: 500;
+  font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+  box-shadow: 0 10px 26px rgba(99, 102, 241, 0.32);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
 
 button:hover {
   filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+.secondary-btn {
+  background: rgba(226, 232, 240, 0.12);
+  border: 1px solid rgba(226, 232, 240, 0.18);
+  box-shadow: none;
 }
 
 .status {
@@ -132,16 +189,19 @@ button:hover {
 }
 
 .weather-card {
-  border-radius: 1rem;
-  padding: 1rem 1.25rem;
-  background: radial-gradient(circle at top left, var(--accent-soft), transparent),
-    rgba(15, 23, 42, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 1.35rem;
+  padding: 1.35rem 1.45rem;
+  background:
+    radial-gradient(circle at 4% 0%, rgba(186, 230, 253, 0.36), transparent 34%),
+    radial-gradient(circle at 100% 100%, rgba(147, 51, 234, 0.44), transparent 38%),
+    linear-gradient(145deg, rgba(59, 130, 246, 0.28), rgba(15, 23, 42, 0.6));
+  border: 1px solid rgba(255, 255, 255, 0.17);
 }
 
 .weather-card h2 {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.35rem;
+  font-weight: 800;
 }
 
 .sub {
@@ -155,12 +215,14 @@ button:hover {
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin: 1rem 0 1.15rem;
 }
 
 .temp-block .temp {
-  font-size: 2.4rem;
-  font-weight: 600;
+  font-size: clamp(4rem, 9vw, 6.4rem);
+  line-height: 0.9;
+  font-weight: 300;
+  letter-spacing: -0.08em;
 }
 
 .temp-block .feels {
@@ -175,7 +237,7 @@ button:hover {
 
 .cond-block .cond {
   display: block;
-  font-weight: 500;
+  font-weight: 800;
 }
 
 .badge {
@@ -196,10 +258,10 @@ button:hover {
 }
 
 .weather-grid .item {
-  padding: 0.6rem 0.7rem;
-  border-radius: 0.75rem;
-  background: rgba(15, 23, 42, 0.85);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0.8rem 0.85rem;
+  border-radius: 0.95rem;
+  background: rgba(5, 11, 25, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .label {
@@ -224,7 +286,7 @@ button:hover {
 
 /* ---------- Forecast Section ---------- */
 .forecast-section {
-  max-width: 900px;
+  max-width: 1080px;
   background:
     linear-gradient(180deg, rgba(37, 99, 235, 0.42), rgba(15, 23, 42, 0.94)),
     radial-gradient(circle at 78% 0%, rgba(125, 211, 252, 0.28), transparent 34%),
@@ -278,7 +340,7 @@ button:hover {
 .forecast-panel {
   margin-top: 0.85rem;
   padding: 0.85rem;
-  border-radius: 1rem;
+  border-radius: 1.25rem;
   background: rgba(2, 6, 23, 0.32);
   border: 1px solid rgba(226, 232, 240, 0.14);
 }
@@ -312,7 +374,7 @@ button:hover {
   justify-content: space-between;
   padding: 0.65rem 0.45rem;
   border-radius: 0.9rem;
-  background: rgba(15, 23, 42, 0.44);
+  background: rgba(15, 23, 42, 0.5);
   border: 1px solid rgba(226, 232, 240, 0.12);
 }
 
@@ -404,38 +466,79 @@ button:hover {
 
 /* ---------- Chart Section ---------- */
 .chart-section {
-  max-width: 900px;
+  max-width: 1080px;
+  background:
+    radial-gradient(circle at 94% 0%, rgba(96, 165, 250, 0.22), transparent 30%),
+    var(--bg-card-strong);
 }
 
 .chart-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.section-kicker {
+  display: block;
+  margin-bottom: 0.28rem;
+  color: rgba(191, 219, 254, 0.82);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 .chart-title {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }
 
-.time-range-btns {
+.date-range-panel {
   display: flex;
-  gap: 0.35rem;
-  background: rgba(15, 23, 42, 0.7);
-  border-radius: 999px;
-  padding: 0.2rem;
-  border: 1px solid rgba(148, 163, 184, 0.15);
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  background: rgba(5, 11, 25, 0.38);
+  border-radius: 1.35rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.date-field {
+  min-width: 148px;
+}
+
+.date-field label {
+  display: block;
+  margin: 0 0 0.35rem 0.2rem;
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.date-field input {
+  width: 100%;
+}
+
+.quick-range-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0 0 0.85rem;
 }
 
 .range-btn {
   padding: 0.35rem 0.9rem;
   border-radius: 999px;
-  border: none;
-  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(5, 11, 25, 0.38);
   color: var(--text-soft);
   font-size: 0.8rem;
   font-weight: 500;
@@ -449,9 +552,41 @@ button:hover {
 }
 
 .range-btn.active {
-  background: linear-gradient(135deg, var(--accent), #6366f1);
+  background: linear-gradient(135deg, #60a5fa, #8b5cf6);
   color: white;
-  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.3);
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.28);
+}
+
+.chart-meta-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.chart-meta-row > div {
+  padding: 0.8rem 0.9rem;
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.46);
+  border: 1px solid rgba(226, 232, 240, 0.1);
+}
+
+.meta-label,
+.meta-value {
+  display: block;
+}
+
+.meta-label {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.meta-value {
+  margin-top: 0.15rem;
+  color: var(--text);
+  font-weight: 650;
 }
 
 .metric-tabs {
@@ -465,10 +600,10 @@ button:hover {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.45rem 0.85rem;
-  border-radius: 0.65rem;
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  background: rgba(15, 23, 42, 0.6);
+  padding: 0.58rem 0.92rem;
+  border-radius: 0.78rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(5, 11, 25, 0.54);
   color: var(--text-soft);
   font-size: 0.82rem;
   font-weight: 500;
@@ -483,10 +618,10 @@ button:hover {
 }
 
 .metric-tab.active {
-  border-color: var(--accent);
+  border-color: rgba(96, 165, 250, 0.8);
   background: var(--accent-soft);
   color: var(--text);
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.15);
+  box-shadow: 0 0 18px rgba(96, 165, 250, 0.18);
 }
 
 .tab-icon {
@@ -499,11 +634,15 @@ button:hover {
 
 .chart-container {
   position: relative;
-  height: 320px;
-  border-radius: 0.75rem;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  padding: 0.75rem;
+  height: 380px;
+  border-radius: 1.45rem;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    rgba(5, 11, 25, 0.42);
+  background-size: 26px 26px, 26px 26px, auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.9rem;
 }
 
 .chart-summary {
@@ -555,6 +694,21 @@ button:hover {
 
   .card {
     padding: 1rem 1.1rem;
+    border-radius: 1.35rem;
+  }
+
+  .form-row {
+    align-items: stretch;
+  }
+
+  .form-row label {
+    width: 100%;
+  }
+
+  select,
+  input[type="date"],
+  button {
+    width: 100%;
   }
 
   .weather-main {
@@ -596,6 +750,23 @@ button:hover {
   .chart-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .date-range-panel {
+    width: 100%;
+  }
+
+  .date-field {
+    width: 100%;
+  }
+
+  .quick-range-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .chart-meta-row {
+    grid-template-columns: 1fr;
   }
 
   .metric-tabs {

@@ -1,4 +1,5 @@
 from pyspark.sql import SparkSession
+from pyspark import StorageLevel
 from pyspark.sql.functions import (
     col, avg, min, max, sum as spark_sum,
     date_format, regexp_replace, to_timestamp,
@@ -19,6 +20,7 @@ HEATWAVE_THRESHOLD = 30.0
 
 def main():
     print("Khởi động Batch Job: Kéo dữ liệu từ MinIO")
+    print(f"Batch MinIO endpoint: {MINIO_ENDPOINT}")
     # 1. KHỞI TẠO SPARK VÀ CẤU HÌNH MINIO S3
     spark = SparkSession.builder \
         .appName("Weather-Batch-Layer") \
@@ -36,6 +38,7 @@ def main():
         "s3a://raw-weather-data/topics/weather_data/*/*.json", # Data Streaming
         "s3a://raw-weather-data/historical/*"                          # Data Lịch sử (.jsonl)
     ]
+    print(f"Batch input paths: {paths_to_read}")
     df = spark.read.option("mode", "DROPMALFORMED").json(paths_to_read)
 
 
@@ -72,6 +75,8 @@ def main():
 
     # Lọc dữ liệu không hợp lệ
     df = df.filter(col("Local_Time").isNotNull() & col("Location").isNotNull())
+    raw_count = df.count()
+    print(f"Batch valid raw rows: {raw_count}")
 
     # Tạo daily aggregates để lưu theo ngày
     daily_df = df.groupBy("Location", "date").agg(
@@ -80,7 +85,10 @@ def main():
         max("temp").alias("max_temp"),
         avg("humidity").alias("avg_humidity"),
         spark_sum("precip").alias("total_precip"),
-    )
+    ).persist(StorageLevel.MEMORY_AND_DISK)
+
+    daily_count = daily_df.count()
+    print(f"Batch daily rows: {daily_count}")
 
     daily_df.write \
         .format("org.elasticsearch.spark.sql") \
@@ -146,7 +154,10 @@ def main():
             col("end_date").alias("heatwave_end"),
             col("max_temp").alias("heatwave_max_temp"),
         ), on="Location", how="left",
-    ).fillna({"longest_heatwave_days": 0, "heatwave_start": "", "heatwave_end": "", "heatwave_max_temp": 0.0})
+    ).fillna({"longest_heatwave_days": 0, "heatwave_max_temp": 0.0})
+
+    summary_count = summary_df.count()
+    print(f"Batch summary rows: {summary_count}")
 
     summary_df.write \
         .format("org.elasticsearch.spark.sql") \
