@@ -35,6 +35,7 @@ def main():
         .appName("Weather-Speed-Layer") \
         .config("spark.es.nodes", ES_HOST) \
         .config("spark.es.port", "9200") \
+        .config("spark.sql.session.timeZone", "Asia/Ho_Chi_Minh") \
         .getOrCreate()
     
     spark.sparkContext.setLogLevel("WARN")
@@ -170,7 +171,7 @@ def main():
             col("data.currentConditions.feelslike").alias("Feels_Like"),
             col("data.currentConditions.humidity").alias("Humidity_%"),
             col("data.currentConditions.dew").alias("Dew_Point"),
-            col("data.currentConditions.precip").alias("Precip_mm"),
+            coalesce(col("data.currentConditions.precip"), lit(0.0)).alias("Precip_mm"),
             col("data.currentConditions.precipprob").alias("Precip_Prob_%"),
             col("data.currentConditions.preciptype").alias("Precip_Type"),
             col("data.currentConditions.snow").alias("Snow"),
