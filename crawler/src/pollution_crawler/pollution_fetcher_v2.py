@@ -14,7 +14,7 @@ API_KEY_LIST = list(os.getenv('OPEN_WEATHER_API_KEY_LIST', '').split(','))
 BASE_URL = 'http://api.openweathermap.org/data/2.5/air_pollution'
 idx = 0
 
-def fetch_pollution_data_v2(lat, lon, max_iter=10, interval=0.2):
+def fetch_pollution_data_v2(lat, lon, max_iter=10, interval=0.5):
     global idx
     params = {
         'lat': lat,

@@ -29,7 +29,7 @@ with open(LOCATIONS_FILE, 'r', encoding='utf-8') as file:
 
 def mean(a, b):
     if a is None and b is None:
-        return 0
+        return
     
     if a is None:
         return b

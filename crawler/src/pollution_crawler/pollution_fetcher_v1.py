@@ -13,7 +13,7 @@ params = {
     'timezone': 'Asia/Bangkok'
 }
 
-def fetch_pollution_data_v1(lat, lon, max_iter=10, interval=0.2):
+def fetch_pollution_data_v1(lat, lon, max_iter=10, interval=0.5):
     params['latitude'] = lat
     params['longitude'] = lon
 

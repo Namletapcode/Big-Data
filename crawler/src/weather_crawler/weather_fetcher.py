@@ -27,7 +27,7 @@ params = {
     'include': 'current'
 }
 
-def fetch_weather_data(lat, lon, max_iter=10, interval=0.2):
+def fetch_weather_data(lat, lon, max_iter=10, interval=0.5):
     global idx
     url = f'{BASE_URL}/{lat},{lon}/today'
 
