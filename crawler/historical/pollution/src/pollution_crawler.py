@@ -66,20 +66,20 @@ def mean(a, b):
 
 def to_float(x):
     if x is None:
-        return None
+        return
     
     return float(x)
 
 def get(data, idx):
     if not data or idx >= len(data):
-        return None
+        return
     
     return data[idx]
 
 def run_crawler():
     global locations
 
-    for year in range(2025, 2027):
+    for year in range(2021, 2027):
         for month in range(1, 13):
             logger.info(f'Đang lấy dữ liệu của tháng {month} năm {year}')
 
@@ -95,8 +95,8 @@ def run_crawler():
             for location in locations:
                 loc_name = f"{location['name']}, {location['country_code']}"
                 
-                lat = location['latitude']
-                lon = location['longitude']
+                lat = float(location['latitude'])
+                lon = float(location['longitude'])
 
                 start_date = datetime(year, month, 1).strftime('%Y-%m-%d')
                 end_date = (datetime(year, month + 1, 1) - timedelta(days=1) if month < 12 else datetime(year, month, 31)).strftime('%Y-%m-%d')
