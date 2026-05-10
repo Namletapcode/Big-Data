@@ -43,8 +43,8 @@ def run_crawler():
     for location in locations:
         loc_name = f"{location['name']}, {location['country_code']}"
         record_time = datetime.now().strftime('%Y-%m-%dT%H:00:00')
-        lat = location['latitude']
-        lon = location['longitude']
+        lat = float(location['latitude'])
+        lon = float(location['longitude'])
 
         logger.info(f'Đang lấy dữ liệu cho: {loc_name}')
 
