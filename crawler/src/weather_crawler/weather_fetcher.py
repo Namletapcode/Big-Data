@@ -28,7 +28,7 @@ params = {
     'include': 'current,days,hours'
 }
 
-def fetch_weather_data(lat, lon, max_iter=10, interval=0.2):
+def fetch_weather_data(lat, lon, max_iter=10, interval=0.5):
     global idx
     start_date = date.today()
     end_date = start_date + timedelta(days=14)

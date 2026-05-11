@@ -29,7 +29,7 @@ with open(LOCATIONS_FILE, 'r', encoding='utf-8') as file:
 
 def mean(a, b):
     if a is None and b is None:
-        return 0
+        return
     
     if a is None:
         return b
@@ -43,8 +43,8 @@ def run_crawler():
     for location in locations:
         loc_name = f"{location['name']}, {location['country_code']}"
         record_time = datetime.now().strftime('%Y-%m-%dT%H:00:00')
-        lat = location['latitude']
-        lon = location['longitude']
+        lat = float(location['latitude'])
+        lon = float(location['longitude'])
 
         logger.info(f'Đang lấy dữ liệu cho: {loc_name}')
 
