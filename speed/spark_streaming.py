@@ -167,6 +167,7 @@ def main():
             coalesce(col("data.address"), col("data.resolvedAddress")).alias("Location"), 
             col("data.timezone").alias("Timezone"),
             from_unixtime(col("data.currentConditions.datetimeEpoch"), "yyyy-MM-dd'T'HH:mm:ss").alias("Local_Time"),
+            from_unixtime(col("data.currentConditions.datetimeEpoch")).cast("timestamp").alias("Event_Time_Timestamp"),
             col("data.currentConditions.temp").alias("Temp_C"),
             col("data.currentConditions.feelslike").alias("Feels_Like"),
             col("data.currentConditions.humidity").alias("Humidity_%"),
@@ -196,7 +197,10 @@ def main():
         )
     )
 
-    query = parsed_stream.writeStream \
+    watermarked_stream = parsed_stream.withWatermark("Event_Time_Timestamp", "2 hours")
+
+    query = watermarked_stream.writeStream \
+        .outputMode("append") \
         .foreachBatch(write_to_es) \
         .option("checkpointLocation", CHECKPOINT_PATH) \
         .trigger(processingTime="10 seconds") \
