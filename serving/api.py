@@ -151,6 +151,132 @@ def get_batch_daily(
     return [h.get("_source", {}) for h in hits]
 
 
+@router.get("/weather/batch/humidity")
+def get_batch_humidity(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ lấy dữ liệu độ ẩm batch cho tất cả địa điểm.",
+    ),
+    limit: int = Query(50, ge=1, le=500, description="Số bản ghi độ ẩm tối đa cần trả về"),
+) -> List[Dict[str, Any]]:
+    es = get_es_client()
+    query = build_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": limit,
+                "query": query,
+                "sort": [{"date": {"order": "desc"}}],
+                "_source": ["Location", "date", "avg_humidity", "avg_temp", "total_precip"],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    hits = resp.get("hits", {}).get("hits", [])
+    return [h.get("_source", {}) for h in hits]
+
+
+@router.get("/weather/batch/humidity/summary")
+def get_batch_humidity_summary(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ tính tổng hợp độ ẩm cho tất cả địa điểm.",
+    )
+) -> Dict[str, Any]:
+    es = get_es_client()
+    query = build_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 0,
+                "query": query,
+                "aggs": {
+                    "avg_humidity": {"avg": {"field": "avg_humidity"}},
+                    "min_humidity": {"min": {"field": "avg_humidity"}},
+                    "max_humidity": {"max": {"field": "avg_humidity"}},
+                },
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    aggs = resp.get("aggregations", {})
+    return {
+        "location": location or "all",
+        "avg_humidity": _r(aggs.get("avg_humidity", {}).get("value")),
+        "min_humidity": _r(aggs.get("min_humidity", {}).get("value")),
+        "max_humidity": _r(aggs.get("max_humidity", {}).get("value")),
+    }
+
+
+@router.get("/weather/batch/precipitation")
+def get_batch_precipitation(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ lấy dữ liệu lượng mưa batch cho tất cả địa điểm.",
+    ),
+    limit: int = Query(50, ge=1, le=500, description="Số bản ghi lượng mưa tối đa cần trả về"),
+) -> List[Dict[str, Any]]:
+    es = get_es_client()
+    query = build_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": limit,
+                "query": query,
+                "sort": [{"date": {"order": "desc"}}],
+                "_source": ["Location", "date", "total_precip", "avg_temp", "avg_humidity"],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    hits = resp.get("hits", {}).get("hits", [])
+    return [h.get("_source", {}) for h in hits]
+
+
+@router.get("/weather/batch/precipitation/summary")
+def get_batch_precipitation_summary(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ tính tổng hợp lượng mưa cho tất cả địa điểm.",
+    )
+) -> Dict[str, Any]:
+    es = get_es_client()
+    query = build_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 0,
+                "query": query,
+                "aggs": {
+                    "avg_precip": {"avg": {"field": "total_precip"}},
+                    "min_precip": {"min": {"field": "total_precip"}},
+                    "max_precip": {"max": {"field": "total_precip"}},
+                },
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    aggs = resp.get("aggregations", {})
+    return {
+        "location": location or "all",
+        "avg_precip": _r(aggs.get("avg_precip", {}).get("value")),
+        "min_precip": _r(aggs.get("min_precip", {}).get("value")),
+        "max_precip": _r(aggs.get("max_precip", {}).get("value")),
+    }
+
+
 @router.get("/weather/batch/summary")
 def get_batch_summary(
     location: Optional[str] = Query(
