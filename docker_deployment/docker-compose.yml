@@ -187,3 +187,6 @@ services:
       - ES_INDEX=weather_realtime
     ports:
       - "8000:8000"
+    volumes:
+      - ../serving/templates:/app/templates   # hot-reload HTML
+      - ../serving/static:/app/static         # hot-reload CSS/JS
