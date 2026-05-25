@@ -1,10 +1,12 @@
 from pyspark.sql import SparkSession
 from pyspark import StorageLevel
 from pyspark.sql.functions import (
-    col, avg, min, max, sum as spark_sum,
+    broadcast, col, avg, min, max, sum as spark_sum,
     date_format, regexp_replace, to_timestamp,
-    to_date, when, lit, lag, row_number, datediff,coalesce
+    to_date, when, lit, lag, row_number, datediff, coalesce,
+    udf
 )
+from pyspark.sql.types import StringType
 from pyspark.sql.window import Window
 import os
 
@@ -32,6 +34,21 @@ def main():
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
         .getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
+    spark.conf.set("spark.sql.shuffle.partitions", "200")
+
+    @udf(StringType())
+    def heat_level(avg_temp):
+        if avg_temp is None:
+            return "unknown"
+        if avg_temp >= 40:
+            return "cực kỳ nóng"
+        if avg_temp >= 35:
+            return "rất nóng"
+        if avg_temp >= 30:
+            return "nóng"
+        if avg_temp >= 25:
+            return "ấm"
+        return "mát"
 
     # 2. ĐỌC DỮ LIỆU TỪ MINIO
     paths_to_read = [
@@ -73,6 +90,20 @@ def main():
     df = df.withColumn("Location", regexp_replace(col("resolvedAddress"), ", Việt Nam", ""))
     df = df.withColumn("date", date_format(col("Local_Time"), "yyyy-MM-dd"))
 
+    province_mapping = [
+        ("Hà Nội", "Hà Nội"),
+        ("Thành phố Hồ Chí Minh", "TP HCM"),
+        ("Sài Gòn", "TP HCM"),
+        ("Hải Phòng", "Hải Phòng"),
+        ("Đà Nẵng", "Đà Nẵng"),
+    ]
+    province_map_df = spark.createDataFrame(province_mapping, ["old_province", "new_province"])
+    df = df.join(
+        broadcast(province_map_df),
+        df.Location == province_map_df.old_province,
+        how="left"
+    ).withColumn("Location", coalesce(col("new_province"), col("Location"))).drop("old_province", "new_province")
+
     # Lọc dữ liệu không hợp lệ
     df = df.filter(col("Local_Time").isNotNull() & col("Location").isNotNull())
     raw_count = df.count()
@@ -87,6 +118,8 @@ def main():
         spark_sum("precip").alias("total_precip"),
     ).persist(StorageLevel.MEMORY_AND_DISK)
 
+    daily_df = daily_df.withColumn("temp_category", heat_level(col("avg_temp")))
+
     daily_count = daily_df.count()
     print(f"Batch daily rows: {daily_count}")
 
@@ -97,6 +130,23 @@ def main():
         .option("es.port", "9200") \
         .option("es.resource", ES_INDEX_DAILY) \
         .save()
+
+    pivot_df = daily_df.groupBy("Location").pivot("temp_category", ["cực kỳ nóng", "rất nóng", "nóng", "ấm", "mát"]).agg(spark_sum(lit(1)).alias("count")).fillna(0)
+
+    unpivot_df = pivot_df.selectExpr(
+        "Location",
+        "stack(5, 'cực kỳ nóng', `cực kỳ nóng`, 'rất nóng', `rất nóng`, 'nóng', `nóng`, 'ấm', `ấm`, 'mát', `mát`) as (temp_category, category_count)"
+    ).filter(col("category_count") > 0)
+    unpivot_count = unpivot_df.count()
+    print(f"Pivot -> Unpivot rows: {unpivot_count}")
+
+    trend_df = daily_df.groupBy("Location").agg(
+        avg("avg_temp").alias("avg_of_avg_temp"),
+        spark_sum("total_precip").alias("sum_precip"),
+    )
+    sort_merge_df = daily_df.hint("merge").join(trend_df.hint("merge"), on="Location", how="inner")
+    sort_merge_count = sort_merge_df.count()
+    print(f"Sort-merge join rows: {sort_merge_count}")
 
     # Tính summary gồm nóng nhất, lạnh nhất, và đợt nóng dài nhất theo location
     window_loc = Window.partitionBy("Location").orderBy("date")
