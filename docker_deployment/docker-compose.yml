@@ -98,8 +98,7 @@ services:
     environment:
       - KAFKA_BOOTSTRAP=kafka:9092
       - KAFKA_TOPIC=weather_data
-      - ES_HOST=elasticsearch
-      - JDK_JAVA_OPTIONS=--add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.reflect=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.math=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util.zip=ALL-UNNAMED --add-opens=java.base/java.security=ALL-UNNAMED
+      - ES_HOST=elasticsearch  
 
   minio:
     image: minio/minio:RELEASE.2023-11-20T22-40-07Z
@@ -143,7 +142,6 @@ services:
       - MINIO_ROOT_USER=admin     
       - MINIO_ROOT_PASSWORD=password123
       - MINIO_ENDPOINT=http://35.240.199.161:9000
-      - JDK_JAVA_OPTIONS=--add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.reflect=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.math=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util.zip=ALL-UNNAMED --add-opens=java.base/java.security=ALL-UNNAMED
 
   kafka_connect:
     build:
