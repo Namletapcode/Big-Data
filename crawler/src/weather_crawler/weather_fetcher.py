@@ -18,7 +18,11 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-API_KEY_LIST = list(os.getenv('VISUAL_CROSSING_API_KEY_LIST', '').split(','))
+API_KEY_LIST = [
+    key.strip()
+    for key in os.getenv('VISUAL_CROSSING_API_KEY_LIST', '').split(',')
+    if key.strip()
+]
 BASE_URL = 'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline'
 idx = get_state(STATE_FILE, 'key_idx')
 
@@ -28,8 +32,19 @@ params = {
     'include': 'current,days,hours'
 }
 
+def reset_key_cycle():
+    """Allow keys rejected in a previous crawl cycle to be retried later."""
+    global idx
+    idx = 0
+    update_state(STATE_FILE, 'key_idx', idx)
+
+
 def fetch_weather_data(lat, lon, max_iter=10, interval=0.5):
     global idx
+    if not API_KEY_LIST:
+        logger.critical('Thiếu VISUAL_CROSSING_API_KEY_LIST trong biến môi trường')
+        return
+
     start_date = date.today()
     end_date = start_date + timedelta(days=14)
     url = f'{BASE_URL}/{lat},{lon}/{start_date.isoformat()}/{end_date.isoformat()}'
@@ -38,14 +53,20 @@ def fetch_weather_data(lat, lon, max_iter=10, interval=0.5):
         try:
             while True:
                 if idx >= len(API_KEY_LIST):
-                    logger.critical('Đã sử dụng hết key')
+                    logger.critical('Không còn API key khả dụng trong chu kỳ thu thập hiện tại')
                     return
                 
                 params['key'] = API_KEY_LIST[idx]
                 response = requests.get(url=url, params=params, timeout=(5, 10))
 
                 if response.status_code in [401, 429]:
+                    logger.warning(
+                        'API key thứ %s bị từ chối (HTTP %s), chuyển sang key tiếp theo',
+                        idx + 1,
+                        response.status_code,
+                    )
                     idx += 1
+                    update_state(STATE_FILE, 'key_idx', idx)
                     continue
 
                 update_state(STATE_FILE, 'key_idx', idx)

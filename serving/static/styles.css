@@ -90,6 +90,11 @@ body::before {
   gap: 1.5rem;
 }
 
+.hidden,
+.section-panel.hidden {
+  display: none;
+}
+
 .card {
   width: 100%;
   max-width: 1080px;
@@ -99,6 +104,34 @@ body::before {
   box-shadow: var(--shadow);
   border: 1px solid var(--border);
   backdrop-filter: blur(28px);
+}
+
+.feature-nav {
+  width: min(1080px, calc(100% - 3rem));
+  margin: 1.25rem auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.7rem;
+}
+
+.feature-btn {
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  background: rgba(5, 11, 25, 0.4);
+  color: var(--text-soft);
+  box-shadow: none;
+}
+
+.feature-btn:hover {
+  border-color: rgba(96, 165, 250, 0.4);
+  color: var(--text);
+}
+
+.feature-btn.active {
+  border-color: rgba(96, 165, 250, 0.78);
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.28), rgba(139, 92, 246, 0.24));
+  color: var(--text);
+  box-shadow: 0 16px 34px rgba(30, 64, 175, 0.22);
 }
 
 .current-card {
@@ -427,6 +460,260 @@ button:hover {
   font-size: 1.35rem;
 }
 
+.day-detail-anchor {
+  position: relative;
+  display: block;
+}
+
+.day-icon-trigger {
+  width: 34px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 0.6rem;
+  background: transparent;
+  box-shadow: none;
+}
+
+.day-icon-trigger:hover,
+.day-icon-trigger[aria-expanded="true"] {
+  transform: none;
+  filter: none;
+  background: rgba(96, 165, 250, 0.16);
+}
+
+.day-detail-popover {
+  position: absolute;
+  left: -72px;
+  bottom: calc(100% + 10px);
+  z-index: 20;
+  width: min(760px, calc(100vw - 4rem));
+  padding: 1rem;
+  border-radius: 1.15rem;
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  background: rgba(3, 10, 25, 0.98);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.54);
+}
+
+.day-detail-popover::after {
+  content: "";
+  position: absolute;
+  left: 82px;
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  transform: rotate(45deg);
+  background: rgba(3, 10, 25, 0.98);
+  border-right: 1px solid rgba(125, 211, 252, 0.34);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.34);
+}
+
+.day-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+}
+
+.day-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.detail-weather-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 0.85rem;
+  background: rgba(96, 165, 250, 0.15);
+  font-size: 1.65rem;
+}
+
+.day-detail-title {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: rgba(191, 219, 254, 0.88);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.day-detail-heading strong {
+  display: block;
+  color: #f8fafc;
+  font-size: 1rem;
+}
+
+.detail-hint {
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.day-detail-description {
+  margin: 0.8rem 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.7rem;
+  background: rgba(30, 41, 59, 0.5);
+  color: rgba(226, 232, 240, 0.88);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.detail-highlight-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.detail-highlight-row span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.7rem;
+  background: rgba(14, 116, 144, 0.18);
+  color: rgba(186, 230, 253, 0.86);
+  font-size: 0.7rem;
+}
+
+.detail-highlight-row strong {
+  color: #f8fafc;
+  font-size: 0.92rem;
+}
+
+.day-detail-scroll {
+  max-height: min(58vh, 510px);
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.detail-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.detail-group {
+  padding: 0.62rem;
+  border: 1px solid rgba(226, 232, 240, 0.1);
+  border-radius: 0.8rem;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.detail-group h4 {
+  margin: 0 0 0.52rem;
+  color: #93c5fd;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.48rem;
+}
+
+.detail-metric {
+  min-width: 0;
+}
+
+.detail-metric span {
+  display: block;
+  color: var(--text-soft);
+  font-size: 0.67rem;
+}
+
+.detail-metric strong {
+  display: block;
+  margin-top: 0.1rem;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.detail-metadata {
+  margin-top: 0.65rem;
+}
+
+.detail-metadata .detail-metric-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.hour-detail {
+  margin-top: 0.65rem;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 0.8rem;
+  background: rgba(2, 6, 23, 0.45);
+}
+
+.hour-detail summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.68rem 0.75rem;
+  color: #bfdbfe;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.hour-detail summary::-webkit-details-marker {
+  display: none;
+}
+
+.hour-detail summary span {
+  float: right;
+  color: var(--text-soft);
+  font-weight: 400;
+}
+
+.hour-detail[open] summary {
+  border-bottom: 1px solid rgba(226, 232, 240, 0.1);
+}
+
+.hour-detail-scroll {
+  overflow-x: auto;
+  padding: 0.15rem 0 0.25rem;
+}
+
+.hour-detail table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.69rem;
+}
+
+.hour-detail th,
+.hour-detail td {
+  padding: 0.42rem 0.5rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.07);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.hour-detail th {
+  position: sticky;
+  top: 0;
+  color: #93c5fd;
+  background: rgba(3, 10, 25, 0.98);
+  font-weight: 600;
+}
+
+.hour-detail td {
+  color: rgba(226, 232, 240, 0.88);
+}
+
+.detail-empty {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
 .day-rain {
   min-height: 1rem;
   color: #7dd3fc;
@@ -697,6 +984,10 @@ button:hover {
     border-radius: 1.35rem;
   }
 
+  .feature-nav {
+    width: calc(100% - 2rem);
+  }
+
   .form-row {
     align-items: stretch;
   }
@@ -745,6 +1036,29 @@ button:hover {
 
   .day-rain {
     font-size: 0.7rem;
+  }
+
+  .day-icon-trigger {
+    width: 30px;
+  }
+
+  .day-detail-popover {
+    left: -74px;
+    width: min(420px, calc(100vw - 2rem));
+    padding: 0.8rem;
+  }
+
+  .day-detail-header {
+    align-items: flex-start;
+  }
+
+  .detail-hint {
+    display: none;
+  }
+
+  .detail-groups,
+  .detail-metadata .detail-metric-grid {
+    grid-template-columns: 1fr;
   }
 
   .chart-header {

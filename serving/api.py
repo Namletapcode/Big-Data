@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import date as date_cls
 from typing import Optional, List, Any, Dict
 
@@ -10,6 +11,49 @@ ES_HOST = os.getenv("ES_HOST", "http://elasticsearch:9200")
 ES_INDEX = os.getenv("ES_INDEX", "weather_realtime")
 ES_INDEX_BATCH_DAILY = os.getenv("ES_INDEX_BATCH_DAILY", "weather_batch_daily")
 ES_INDEX_BATCH_STATS = os.getenv("ES_INDEX_BATCH_STATS", "weather_batch_stats")
+ES_INDEX_BATCH_YOY = os.getenv("ES_INDEX_BATCH_YOY", "weather_batch_yoy")
+
+BATCH_LOCATION_MERGES = {
+    "Hà Giang": "Tuyên Quang",
+    "Yên Bái": "Lào Cai",
+    "Bắc Kạn": "Thái Nguyên",
+    "Vĩnh Phúc": "Phú Thọ",
+    "Hòa Bình": "Phú Thọ",
+    "Hoà Bình": "Phú Thọ",
+    "Bắc Giang": "Bắc Ninh",
+    "Thái Bình": "Hưng Yên",
+    "Hải Dương": "Hải Phòng",
+    "Hà Nam": "Ninh Bình",
+    "Nam Định": "Ninh Bình",
+    "Quảng Bình": "Quảng Trị",
+    "Quảng Nam": "Đà Nẵng",
+    "Kon Tum": "Quảng Ngãi",
+    "Bình Định": "Gia Lai",
+    "Ninh Thuận": "Khánh Hòa",
+    "Đắk Nông": "Lâm Đồng",
+    "Bình Thuận": "Lâm Đồng",
+    "Phú Yên": "Đắk Lắk",
+    "Đắk Lăk": "Đắk Lắk",
+    "Bà Rịa - Vũng Tàu": "Hồ Chí Minh",
+    "Bà Rịa Vũng Tàu": "Hồ Chí Minh",
+    "Bình Dương": "Hồ Chí Minh",
+    "TP Hồ Chí Minh": "Hồ Chí Minh",
+    "TP. Hồ Chí Minh": "Hồ Chí Minh",
+    "TP.HCM": "Hồ Chí Minh",
+    "TP HCM": "Hồ Chí Minh",
+    "Sài Gòn": "Hồ Chí Minh",
+    "Bình Phước": "Đồng Nai",
+    "Long An": "Tây Ninh",
+    "Sóc Trăng": "Cần Thơ",
+    "Hậu Giang": "Cần Thơ",
+    "Bến Tre": "Vĩnh Long",
+    "Trà Vinh": "Vĩnh Long",
+    "Tiền Giang": "Đồng Tháp",
+    "Bạc Liêu": "Cà Mau",
+    "Kiên Giang": "An Giang",
+    "Thừa Thiên Huế": "Huế",
+    "Thừa Thiên-Huế": "Huế",
+}
 
 router = APIRouter()
 
@@ -28,6 +72,19 @@ def build_location_query(location: Optional[str]) -> Dict[str, Any]:
     if not location:
         return {"match_all": {}}
     return {"term": {"Location.keyword": location}}
+
+
+def normalize_batch_location(location: Optional[str]) -> Optional[str]:
+    if not location:
+        return location
+    normalized = re.sub(r",\s*(VN|Việt Nam)\s*$", "", location).strip()
+    normalized = re.sub(r"^(Tỉnh|Thành phố)\s+", "", normalized).strip()
+    normalized = re.sub(r"\s+", " ", normalized)
+    return BATCH_LOCATION_MERGES.get(normalized, normalized)
+
+
+def build_batch_location_query(location: Optional[str]) -> Dict[str, Any]:
+    return build_location_query(normalize_batch_location(location))
 
 
 @router.get("/health")
@@ -99,6 +156,33 @@ def get_weather_history(
     return [h.get("_source", {}) for h in hits]
 
 
+@router.get("/weather/batch/yoy")
+def get_batch_yoy(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm; alias realtime hoặc tên tỉnh cũ sẽ được chuẩn hóa sang 34 tỉnh/thành mới.",
+    ),
+    limit: int = Query(50, ge=1, le=500, description="Số bản ghi so sánh cùng kỳ tối đa cần trả về"),
+) -> List[Dict[str, Any]]:
+    es = get_es_client()
+    query = build_batch_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_YOY,
+            body={
+                "size": limit,
+                "query": query,
+                "sort": [{"date": {"order": "desc"}}],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    hits = resp.get("hits", {}).get("hits", [])
+    return [h.get("_source", {}) for h in hits]
+
+
 @router.get("/weather/locations")
 def list_locations(limit: int = Query(20, ge=1, le=100)) -> List[str]:
     es = get_es_client()
@@ -133,7 +217,7 @@ def get_batch_daily(
     limit: int = Query(50, ge=1, le=500, description="Số bản ghi batch tối đa cần trả về"),
 ) -> List[Dict[str, Any]]:
     es = get_es_client()
-    query = build_location_query(location)
+    query = build_batch_location_query(location)
 
     try:
         resp = es.search(
@@ -160,7 +244,7 @@ def get_batch_humidity(
     limit: int = Query(50, ge=1, le=500, description="Số bản ghi độ ẩm tối đa cần trả về"),
 ) -> List[Dict[str, Any]]:
     es = get_es_client()
-    query = build_location_query(location)
+    query = build_batch_location_query(location)
 
     try:
         resp = es.search(
@@ -187,7 +271,8 @@ def get_batch_humidity_summary(
     )
 ) -> Dict[str, Any]:
     es = get_es_client()
-    query = build_location_query(location)
+    normalized_location = normalize_batch_location(location)
+    query = build_batch_location_query(location)
 
     try:
         resp = es.search(
@@ -207,7 +292,7 @@ def get_batch_humidity_summary(
 
     aggs = resp.get("aggregations", {})
     return {
-        "location": location or "all",
+        "location": normalized_location or "all",
         "avg_humidity": _r(aggs.get("avg_humidity", {}).get("value")),
         "min_humidity": _r(aggs.get("min_humidity", {}).get("value")),
         "max_humidity": _r(aggs.get("max_humidity", {}).get("value")),
@@ -223,7 +308,7 @@ def get_batch_precipitation(
     limit: int = Query(50, ge=1, le=500, description="Số bản ghi lượng mưa tối đa cần trả về"),
 ) -> List[Dict[str, Any]]:
     es = get_es_client()
-    query = build_location_query(location)
+    query = build_batch_location_query(location)
 
     try:
         resp = es.search(
@@ -250,7 +335,8 @@ def get_batch_precipitation_summary(
     )
 ) -> Dict[str, Any]:
     es = get_es_client()
-    query = build_location_query(location)
+    normalized_location = normalize_batch_location(location)
+    query = build_batch_location_query(location)
 
     try:
         resp = es.search(
@@ -270,7 +356,7 @@ def get_batch_precipitation_summary(
 
     aggs = resp.get("aggregations", {})
     return {
-        "location": location or "all",
+        "location": normalized_location or "all",
         "avg_precip": _r(aggs.get("avg_precip", {}).get("value")),
         "min_precip": _r(aggs.get("min_precip", {}).get("value")),
         "max_precip": _r(aggs.get("max_precip", {}).get("value")),
@@ -285,7 +371,8 @@ def get_batch_summary(
     )
 ) -> Dict[str, Any]:
     es = get_es_client()
-    query = build_location_query(location)
+    normalized_location = normalize_batch_location(location)
+    query = build_batch_location_query(location)
 
     try:
         resp = es.search(
@@ -300,8 +387,8 @@ def get_batch_summary(
 
     hits = resp.get("hits", {}).get("hits", [])
     if not hits:
-        if location:
-            fallback = build_batch_summary_from_daily(es, location)
+        if normalized_location:
+            fallback = build_batch_summary_from_daily(es, normalized_location)
             if fallback:
                 return fallback
         raise HTTPException(status_code=404, detail="Không tìm thấy dữ liệu batch cho location này")
@@ -441,7 +528,7 @@ def get_chart_data(
     """Lấy dữ liệu biểu đồ hoàn toàn từ batch daily (temp, humidity, precip)."""
     es = get_es_client()
 
-    batch_loc = location.rsplit(", ", 1)[0] if ", " in location else location
+    batch_loc = normalize_batch_location(location)
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=400, detail="start_date phải nhỏ hơn hoặc bằng end_date")
 

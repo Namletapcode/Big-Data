@@ -3,6 +3,6 @@ RUN apt-get update && apt-get install -y default-jre && rm -rf /var/lib/apt/list
 WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-COPY *.jsonl ./
+COPY province_mapping_63_to_34.json ./
 COPY spark_batch.py ./
 CMD ["spark-submit", "--packages", "org.elasticsearch:elasticsearch-spark-30_2.12:8.11.1,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262", "spark_batch.py"]

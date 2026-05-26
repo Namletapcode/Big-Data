@@ -15,9 +15,24 @@
         <p>Theo dõi thời tiết realtime, dự báo nhiều ngày và lịch sử khí hậu từ Spark + Elasticsearch.</p>
       </header>
 
+      <nav class="feature-nav" role="tablist" aria-label="Chọn tính năng">
+        <button class="feature-btn" id="tab-current" role="tab" data-target="section-current" aria-controls="section-current" aria-selected="false">
+          Thời tiết hiện tại
+        </button>
+        <button class="feature-btn" id="tab-forecast" role="tab" data-target="forecast-section" aria-controls="forecast-section" aria-selected="false">
+          Dự báo thời tiết
+        </button>
+        <button class="feature-btn" id="tab-batch" role="tab" data-target="batch-summary-section" aria-controls="batch-summary-section" aria-selected="false">
+          Thống kê Batch
+        </button>
+        <button class="feature-btn" id="tab-chart" role="tab" data-target="history-section" aria-controls="history-section" aria-selected="false">
+          Dữ liệu lịch sử
+        </button>
+      </nav>
+
       <main class="app-main">
         <!-- Current Weather -->
-        <section class="card current-card">
+        <section id="section-current" class="card current-card section-panel hidden" role="tabpanel" aria-labelledby="tab-current">
           <div class="form-row">
             <label for="location">Chọn địa điểm</label>
             <select id="location">
@@ -90,7 +105,7 @@
         </section>
 
         <!-- Forecast Section -->
-        <section id="forecast-section" class="card forecast-section hidden">
+        <section id="forecast-section" class="card forecast-section section-panel hidden" role="tabpanel" aria-labelledby="tab-forecast">
           <div class="forecast-hero">
             <div>
               <span class="forecast-kicker">Dự báo từ luồng streaming</span>
@@ -120,7 +135,7 @@
         </section>
 
         <!-- Batch Summary Section -->
-        <section id="batch-summary-section" class="card hidden">
+        <section id="batch-summary-section" class="card section-panel hidden" role="tabpanel" aria-labelledby="tab-batch">
           <h2>Báo cáo Thống kê Toàn thời gian (Batch Data)</h2>
           <div class="weather-grid">
             <div class="item">
@@ -153,7 +168,7 @@
         </section>
 
         <!-- Chart Section -->
-        <section class="card chart-section">
+        <section id="history-section" class="card chart-section section-panel hidden" role="tabpanel" aria-labelledby="tab-chart">
           <div class="chart-header">
             <div>
               <span class="section-kicker">Historical Weather</span>
@@ -318,6 +333,226 @@
         return date.toLocaleDateString("vi-VN", { weekday: "short" });
       }
 
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      const DAY_DETAIL_LABELS = {
+        datetime: "Ngày dự báo",
+        datetimeEpoch: "Thời gian hệ thống",
+        tempmax: "Cao nhất",
+        tempmin: "Thấp nhất",
+        temp: "Trung bình",
+        feelslikemax: "Cảm giác cao nhất",
+        feelslikemin: "Cảm giác thấp nhất",
+        feelslike: "Cảm giác trung bình",
+        dew: "Điểm sương",
+        humidity: "Độ ẩm",
+        precip: "Lượng mưa",
+        precipprob: "Xác suất mưa",
+        precipcover: "Thời gian có mưa",
+        preciptype: "Loại mưa",
+        snow: "Tuyết",
+        snowdepth: "Độ dày tuyết",
+        windgust: "Gió giật",
+        windspeed: "Tốc độ gió",
+        winddir: "Hướng gió",
+        pressure: "Áp suất",
+        cloudcover: "Mây che phủ",
+        visibility: "Tầm nhìn",
+        solarradiation: "Bức xạ mặt trời",
+        solarenergy: "Năng lượng mặt trời",
+        uvindex: "Chỉ số UV",
+        severerisk: "Rủi ro thời tiết",
+        sunrise: "Mặt trời mọc",
+        sunriseEpoch: "Mốc mặt trời mọc",
+        sunset: "Mặt trời lặn",
+        sunsetEpoch: "Mốc mặt trời lặn",
+        moonphase: "Pha mặt trăng",
+        conditions: "Điều kiện",
+        description: "Mô tả",
+        icon: "Biểu tượng API",
+        stations: "Trạm quan trắc",
+        source: "Nguồn dữ liệu",
+        hours: "Theo giờ",
+      };
+
+      const DAY_DETAIL_UNITS = {
+        tempmax: "°C",
+        tempmin: "°C",
+        temp: "°C",
+        feelslikemax: "°C",
+        feelslikemin: "°C",
+        feelslike: "°C",
+        dew: "°C",
+        humidity: "%",
+        precip: "mm",
+        precipprob: "%",
+        precipcover: "%",
+        snow: "cm",
+        snowdepth: "cm",
+        windgust: "km/h",
+        windspeed: "km/h",
+        winddir: "°",
+        pressure: "hPa",
+        cloudcover: "%",
+        visibility: "km",
+        solarradiation: "W/m²",
+        solarenergy: "MJ/m²",
+        uvindex: "",
+        severerisk: "%",
+        moonphase: "",
+      };
+
+      const DAY_DETAIL_GROUPS = [
+        {
+          title: "Nhiệt độ & cảm giác",
+          keys: ["tempmax", "tempmin", "temp", "feelslikemax", "feelslikemin", "feelslike", "dew"],
+        },
+        {
+          title: "Mưa & độ ẩm",
+          keys: ["humidity", "precip", "precipprob", "precipcover", "preciptype", "snow", "snowdepth"],
+        },
+        {
+          title: "Gió & bầu trời",
+          keys: ["windspeed", "windgust", "winddir", "pressure", "cloudcover", "visibility"],
+        },
+        {
+          title: "Mặt trời & mức độ rủi ro",
+          keys: ["uvindex", "severerisk", "solarradiation", "solarenergy", "sunrise", "sunset", "moonphase"],
+        },
+      ];
+
+      const HOUR_COLUMN_ORDER = [
+        "datetime", "temp", "feelslike", "humidity", "precip", "precipprob",
+        "preciptype", "windspeed", "windgust", "winddir", "pressure",
+        "visibility", "cloudcover", "solarradiation", "solarenergy", "uvindex",
+        "severerisk", "conditions", "icon", "snow", "snowdepth", "dew",
+        "stations", "source", "datetimeEpoch",
+      ];
+
+      function dayDetailLabel(key) {
+        return DAY_DETAIL_LABELS[key] || key;
+      }
+
+      function fmtDetailValue(key, value) {
+        if (value == null || value === "") return "Không có dữ liệu";
+        if (Array.isArray(value)) return value.length ? value.join(", ") : "Không có";
+        if (key.endsWith("Epoch")) {
+          const date = new Date(Number(value) * 1000);
+          return Number.isNaN(date.getTime())
+            ? String(value)
+            : date.toLocaleString("vi-VN");
+        }
+        const unit = DAY_DETAIL_UNITS[key];
+        if (unit !== undefined) return `${value}${unit ? ` ${unit}` : ""}`;
+        return String(value);
+      }
+
+      function renderDetailMetric(key, value) {
+        return `
+          <div class="detail-metric">
+            <span>${escapeHtml(dayDetailLabel(key))}</span>
+            <strong>${escapeHtml(fmtDetailValue(key, value))}</strong>
+          </div>
+        `;
+      }
+
+      function renderDetailGroup(day, group) {
+        return `
+          <section class="detail-group">
+            <h4>${group.title}</h4>
+            <div class="detail-metric-grid">
+              ${group.keys.map((key) => renderDetailMetric(key, day[key])).join("")}
+            </div>
+          </section>
+        `;
+      }
+
+      function renderHourlyDetails(hours) {
+        if (!Array.isArray(hours) || !hours.length) {
+          return '<p class="detail-empty">Không có dự báo theo giờ.</p>';
+        }
+        const providedKeys = new Set(hours.flatMap((hour) => Object.keys(hour)));
+        const columns = HOUR_COLUMN_ORDER
+          .filter((key) => providedKeys.has(key))
+          .concat([...providedKeys].filter((key) => !HOUR_COLUMN_ORDER.includes(key)));
+        return `
+          <details class="hour-detail">
+            <summary>Dự báo theo giờ (${hours.length} mốc) <span>Mở bảng đầy đủ</span></summary>
+            <div class="hour-detail-scroll">
+              <table>
+                <thead>
+                  <tr>${columns.map((key) => `<th>${escapeHtml(dayDetailLabel(key))}</th>`).join("")}</tr>
+                </thead>
+                <tbody>
+                  ${hours.map((hour) => `
+                    <tr>${columns.map((key) => `<td>${escapeHtml(fmtDetailValue(key, hour[key]))}</td>`).join("")}</tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        `;
+      }
+
+      function renderDayDetailTable(day, idx) {
+        const groupedKeys = new Set(DAY_DETAIL_GROUPS.flatMap((group) => group.keys));
+        const metadataKeys = ["conditions", "description", "source", "stations", "icon", "datetimeEpoch", "sunriseEpoch", "sunsetEpoch"];
+        const presentedKeys = new Set(["datetime", "hours", ...groupedKeys, ...metadataKeys]);
+        const additionalKeys = Object.keys(day).filter((key) => !presentedKeys.has(key));
+
+        return `
+          <div class="day-detail-popover hidden" id="day-detail-${idx}">
+            <div class="day-detail-header">
+              <div class="day-detail-heading">
+                <span class="detail-weather-icon" aria-hidden="true">${weatherIcon(day.icon)}</span>
+                <div>
+                  <span class="day-detail-title">${escapeHtml(day.datetime || "Ngày dự báo")}</span>
+                  <strong>${escapeHtml(day.conditions || "Không có mô tả thời tiết")}</strong>
+                </div>
+              </div>
+              <span class="detail-hint">Bấm lại icon để đóng</span>
+            </div>
+            <p class="day-detail-description">${escapeHtml(day.description || "Không có mô tả bổ sung.")}</p>
+            <div class="detail-highlight-row">
+              <span>Cao nhất <strong>${escapeHtml(fmtDetailValue("tempmax", day.tempmax))}</strong></span>
+              <span>Thấp nhất <strong>${escapeHtml(fmtDetailValue("tempmin", day.tempmin))}</strong></span>
+              <span>Khả năng mưa <strong>${escapeHtml(fmtDetailValue("precipprob", day.precipprob))}</strong></span>
+            </div>
+            <div class="day-detail-scroll">
+              <div class="detail-groups">
+                ${DAY_DETAIL_GROUPS.map((group) => renderDetailGroup(day, group)).join("")}
+              </div>
+              <section class="detail-group detail-metadata">
+                <h4>Nguồn & thông tin kỹ thuật</h4>
+                <div class="detail-metric-grid">
+                  ${metadataKeys.map((key) => renderDetailMetric(key, day[key])).join("")}
+                  ${additionalKeys.map((key) => renderDetailMetric(key, day[key])).join("")}
+                </div>
+              </section>
+              ${renderHourlyDetails(day.hours)}
+            </div>
+          </div>
+        `;
+      }
+
+      function toggleDayDetail(idx) {
+        const selected = $(`day-detail-${idx}`);
+        const shouldOpen = selected.classList.contains("hidden");
+        document.querySelectorAll(".day-detail-popover").forEach((detail) => detail.classList.add("hidden"));
+        document.querySelectorAll(".day-icon-trigger").forEach((button) => button.setAttribute("aria-expanded", "false"));
+        if (shouldOpen) {
+          selected.classList.remove("hidden");
+          document.querySelector(`[data-day-detail="${idx}"]`).setAttribute("aria-expanded", "true");
+        }
+      }
+
       function pickHourlyForecast(days, localTime) {
         const todayHours = (days[0] && days[0].hours) || [];
         const tomorrowHours = (days[1] && days[1].hours) || [];
@@ -334,12 +569,7 @@
 
       function renderForecast(d) {
         const days = Array.isArray(d.Forecast_15_Days) ? d.Forecast_15_Days : [];
-        if (!days.length) {
-          $("forecast-section").classList.add("hidden");
-          return;
-        }
-
-        $("forecast-section").classList.remove("hidden");
+        if (!days.length) return;
         $("forecast-location").textContent = d.Location || "Dự báo thời tiết";
         $("forecast-now-temp").textContent = fmtTemp(d.Temp_C);
         $("forecast-now-range").textContent = `${fmtTemp(days[0].tempmax)} / ${fmtTemp(days[0].tempmin)}`;
@@ -373,7 +603,10 @@
           return `
             <div class="day-row">
               <span class="day-name">${fmtDay(day.datetime, idx)}</span>
-              <span class="day-icon" aria-hidden="true">${weatherIcon(day.icon)}</span>
+              <span class="day-detail-anchor">
+                <button class="day-icon day-icon-trigger" type="button" data-day-detail="${idx}" aria-expanded="false" aria-controls="day-detail-${idx}" aria-label="Xem chi tiết dự báo ngày ${escapeHtml(day.datetime || "")}">${weatherIcon(day.icon)}</button>
+                ${renderDayDetailTable(day, idx)}
+              </span>
               <span class="day-rain">${day.precipprob != null ? Math.round(day.precipprob) + "%" : ""}</span>
               <span class="day-low">${fmtTemp(day.tempmin)}</span>
               <span class="temp-track"><span style="left:${start}%; width:${width}%"></span></span>
@@ -583,12 +816,45 @@
         }
       }
 
+      /* ---------- Feature Navigation ---------- */
+      const FEATURE_FETCH = {
+        "section-current": fetchLatest,
+        "forecast-section": fetchLatest,
+        "batch-summary-section": fetchBatchSummary,
+        "history-section": fetchChartData,
+      };
+
+      function activateFeature(targetId) {
+        document.querySelectorAll(".feature-btn").forEach((btn) => {
+          const on = btn.dataset.target === targetId;
+          btn.classList.toggle("active", on);
+          btn.setAttribute("aria-selected", on ? "true" : "false");
+        });
+        document.querySelectorAll(".section-panel").forEach((panel) => {
+          if (panel.id === targetId) {
+            panel.classList.remove("hidden");
+          } else {
+            panel.classList.add("hidden");
+          }
+        });
+        FEATURE_FETCH[targetId]?.();
+      }
+
       /* ---------- Event Listeners ---------- */
       document.addEventListener("DOMContentLoaded", () => {
+        document.querySelectorAll(".feature-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            activateFeature(btn.dataset.target);
+          });
+        });
+
+        $("daily-forecast").addEventListener("click", (event) => {
+          const trigger = event.target.closest(".day-icon-trigger");
+          if (trigger) toggleDayDetail(trigger.dataset.dayDetail);
+        });
+
         $("refresh-btn").addEventListener("click", () => {
           fetchLatest();
-          fetchChartData();
-          fetchBatchSummary();
         });
 
         $("apply-range-btn").addEventListener("click", fetchChartData);
@@ -626,19 +892,11 @@
 
         // Location change
         $("location").addEventListener("change", () => {
-          fetchLatest();
-          fetchChartData();
-          fetchBatchSummary();
+          const active = document.querySelector(".feature-btn.active");
+          if (active) FEATURE_FETCH[active.dataset.target]?.();
         });
 
         setDateRangeFromDays(currentDays);
-
-        // Initial load
-        if ($("location").value) {
-          fetchLatest();
-          fetchChartData();
-          fetchBatchSummary();
-        }
       });
     </script>
   </body>
