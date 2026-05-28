@@ -15,7 +15,7 @@ with DAG(
     dag_id='crawler_pipeline',
     default_args=default_args,
     start_date=datetime(2026, 1, 1, tz='Asia/Bangkok'),
-    schedule='0,10,20,30,40,50 * * * *',
+    schedule='5,35 * * * *',
     catchup=False,
     template_searchpath=['/opt/airflow']
 ) as dag:
