@@ -1,5 +1,6 @@
 networks:
   bigdata-net:
+    name: bigdata-net
 
 services:
   zookeeper:
@@ -32,36 +33,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 120s
-
-  weather_crawler:
-    build: ../crawler
-    container_name: weather_crawler
-    command: python3 -u weather_crawler/weather_crawler.py
-    depends_on:
-      kafka:
-        condition: service_healthy
-    networks: [bigdata-net]
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    env_file:
-      - ../crawler/.env
-
-  pollution_crawler:
-    build: ../crawler
-    container_name: pollution_crawler
-    command: python3 -u pollution_crawler/pollution_crawler.py
-    depends_on:
-      kafka:
-        condition: service_healthy
-    networks: [bigdata-net]
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    env_file:
-      - ../crawler/.env
     
-
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
     container_name: elasticsearch
@@ -107,9 +79,8 @@ services:
     ports:
       - "9000:9000" 
       - "9001:9001" 
-    environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: password123
+    env_file:
+      - ./minio.env
     command: server /data --console-address ":9001"
 
   minio_init:
@@ -137,10 +108,8 @@ services:
         condition: service_started
     networks: [bigdata-net]
     restart: no 
-    environment:
-      - ES_HOST=elasticsearch
-      - MINIO_ROOT_USER=admin     
-      - MINIO_ROOT_PASSWORD=password123
+    env_file:
+      - ./minio.env
 
   kafka_connect:
     build:
@@ -153,25 +122,8 @@ services:
     networks: [bigdata-net]
     ports:
       - "8083:8083"
-    environment:
-      CONNECT_BOOTSTRAP_SERVERS: 'kafka:9092'
-      CONNECT_REST_ADVERTISED_HOST_NAME: kafka_connect
-      CONNECT_REST_PORT: 8083
-      CONNECT_GROUP_ID: compose-connect-group
-      CONNECT_CONFIG_STORAGE_TOPIC: docker-connect-configs
-      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
-      CONNECT_OFFSET_FLUSH_INTERVAL_MS: 10000
-      CONNECT_OFFSET_STORAGE_TOPIC: docker-connect-offsets
-      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
-      CONNECT_STATUS_STORAGE_TOPIC: docker-connect-status
-      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
-      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
-      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
-      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
-      AWS_ACCESS_KEY_ID: admin 
-      AWS_SECRET_ACCESS_KEY: password123
+    env_file:
+      - ./kafka_connect.env
 
   serving_api:
     build: ../serving
@@ -186,3 +138,105 @@ services:
       - ES_INDEX=weather_realtime
     ports:
       - "8000:8000"
+
+  crawler-builder:
+    build: ../crawler
+    image: crawler_image:latest
+    networks: [bigdata-net]
+    profiles: ["donotrun"]
+
+  airflow-db:
+    image: postgres:13-alpine
+    container_name: airflow_db
+    networks: [bigdata-net]
+    env_file:
+      - ./airflow.env
+    mem_limit: 512m
+    cpus: 0.4
+
+  airflow-init:
+    image: apache/airflow:3.2.1-python3.10
+    container_name: airflow_init
+    networks: [bigdata-net]
+    depends_on:
+      - airflow-db
+    env_file:
+      - ./airflow.env
+    command: version
+
+  airflow-webserver:
+    image: apache/airflow:3.2.1-python3.10
+    container_name: airflow_webserver
+    restart: always
+    networks: [bigdata-net]
+    depends_on:
+      - airflow-init
+    env_file:
+      - ./airflow.env
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/logs:/opt/airflow/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8080:8080"
+    command: api-server
+    mem_limit: 768m
+    cpus: 0.6
+
+  airflow-scheduler:
+    image: apache/airflow:3.2.1-python3.10
+    user: "50000:0"
+    container_name: airflow_scheduler
+    restart: always
+    networks: [bigdata-net]
+    depends_on:
+      - airflow-init
+    env_file:
+      - ./airflow.env
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/logs:/opt/airflow/logs
+      - ../crawler/.env:/opt/airflow/crawler.env
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: scheduler
+    mem_limit: 768m
+    cpus: 0.6
+
+  airflow-dag-processor:
+    image: apache/airflow:3.2.1-python3.10
+    container_name: airflow_dag_processor
+    restart: always
+    networks: [bigdata-net]
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    env_file:
+      - ./airflow.env
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/logs:/opt/airflow/logs
+      - ../crawler/.env:/opt/airflow/crawler.env
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: dag-processor
+    mem_limit: 512m
+    cpus: 0.4
+
+  airflow-triggerer:
+    image: apache/airflow:3.2.1-python3.10
+    user: "50000:0"
+    container_name: airflow_triggerer
+    restart: always
+    networks: [bigdata-net]
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    env_file:
+      - ./airflow.env
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../airflow/logs:/opt/airflow/logs
+      - ../crawler/.env:/opt/airflow/crawler.env
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: triggerer
+    mem_limit: 512m
+    cpus: 0.4
