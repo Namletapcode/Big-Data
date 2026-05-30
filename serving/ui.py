@@ -25,6 +25,6 @@ async def weather_dashboard(request: Request):
         "index.html",
         {
             "locations": locations,
+            "asset_version": int(os.path.getmtime(os.path.join(BASE_DIR, "static", "styles.css"))),
         },
     )
-

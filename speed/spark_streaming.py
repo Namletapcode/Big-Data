@@ -1,30 +1,46 @@
 import os
 import time
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import concat, lit, col, from_json, from_unixtime, coalesce
+from pyspark.sql.functions import (
+    concat, lit, col, from_json, from_unixtime, coalesce,
+    window, avg, min, max, sum as spark_sum
+)
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType, ArrayType
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "weather_data")
 ES_HOST = os.getenv("ES_HOST", "elasticsearch")
-ES_INDEX = "weather_realtime" 
-CHECKPOINT_PATH = "/tmp/spark_checkpoints/weather_es"
 
-def write_to_es(batch_df, batch_id):
+# Cấu hình Index và Checkpoint độc lập cho 2 luồng
+ES_INDEX_REALTIME = "weather_realtime"
+ES_INDEX_AGG = "weather_aggregated_6h"
+CHECKPOINT_REALTIME = "/tmp/spark_checkpoints/weather_realtime"
+CHECKPOINT_AGG = "/tmp/spark_checkpoints/weather_agg_6h"
+
+# Hàm ghi tĩnh cho luồng Real-time
+def write_realtime_to_es(batch_df, batch_id):
     if batch_df.isEmpty():
         return
-
-    batch_df_with_id = batch_df.withColumn(
-        "es_id", 
-        concat(col("Location"), lit("_"), col("Local_Time"))
-    )
-
-    batch_df_with_id.write \
+    batch_df.write \
         .format("org.elasticsearch.spark.sql") \
         .mode("append") \
         .option("es.nodes", ES_HOST) \
         .option("es.port", "9200") \
-        .option("es.resource", ES_INDEX) \
+        .option("es.resource", ES_INDEX_REALTIME) \
+        .option("es.mapping.id", "es_id") \
+        .option("es.nodes.wan.only", "true") \
+        .save()
+
+# Hàm ghi tĩnh cho luồng Aggregation 6 tiếng
+def write_agg_to_es(batch_df, batch_id):
+    if batch_df.isEmpty():
+        return
+    batch_df.write \
+        .format("org.elasticsearch.spark.sql") \
+        .mode("append") \
+        .option("es.nodes", ES_HOST) \
+        .option("es.port", "9200") \
+        .option("es.resource", ES_INDEX_AGG) \
         .option("es.mapping.id", "es_id") \
         .option("es.nodes.wan.only", "true") \
         .save()
@@ -35,6 +51,7 @@ def main():
         .appName("Weather-Speed-Layer") \
         .config("spark.es.nodes", ES_HOST) \
         .config("spark.es.port", "9200") \
+        .config("spark.sql.session.timeZone", "Asia/Ho_Chi_Minh") \
         .getOrCreate()
     
     spark.sparkContext.setLogLevel("WARN")
@@ -166,11 +183,12 @@ def main():
             coalesce(col("data.address"), col("data.resolvedAddress")).alias("Location"), 
             col("data.timezone").alias("Timezone"),
             from_unixtime(col("data.currentConditions.datetimeEpoch"), "yyyy-MM-dd'T'HH:mm:ss").alias("Local_Time"),
+            from_unixtime(col("data.currentConditions.datetimeEpoch")).cast("timestamp").alias("Event_Time_Timestamp"),
             col("data.currentConditions.temp").alias("Temp_C"),
             col("data.currentConditions.feelslike").alias("Feels_Like"),
             col("data.currentConditions.humidity").alias("Humidity_%"),
             col("data.currentConditions.dew").alias("Dew_Point"),
-            col("data.currentConditions.precip").alias("Precip_mm"),
+            coalesce(col("data.currentConditions.precip"), lit(0.0)).alias("Precip_mm"),
             col("data.currentConditions.precipprob").alias("Precip_Prob_%"),
             col("data.currentConditions.preciptype").alias("Precip_Type"),
             col("data.currentConditions.snow").alias("Snow"),
@@ -195,13 +213,55 @@ def main():
         )
     )
 
-    query = parsed_stream.writeStream \
-        .foreachBatch(write_to_es) \
-        .option("checkpointLocation", CHECKPOINT_PATH) \
+    # ====================================================================
+    # LUỒNG 1: Ghi dữ liệu Real-time
+    # ====================================================================
+    realtime_df = parsed_stream.withColumn(
+        "es_id", concat(col("Location"), lit("_"), col("Local_Time"))
+    )
+
+    query_realtime = realtime_df.writeStream \
+        .outputMode("append") \
+        .foreachBatch(write_realtime_to_es) \
+        .option("checkpointLocation", CHECKPOINT_REALTIME) \
         .trigger(processingTime="10 seconds") \
         .start()
 
-    query.awaitTermination()
+    # ====================================================================
+    # LUỒNG 2: Ghi dữ liệu Aggregation (Window 6 tiếng)
+    # ====================================================================
+    watermarked_stream = parsed_stream.withWatermark("Event_Time_Timestamp", "2 hours")
+
+    aggregated_stream = watermarked_stream.groupBy(
+        col("Location"),
+        window(col("Event_Time_Timestamp"), "6 hours")
+    ).agg(
+        avg("Temp_C").alias("Avg_Temp_C"),
+        max("Temp_C").alias("Max_Temp_C"),
+        min("Temp_C").alias("Min_Temp_C"),
+        max("Wind_Speed").alias("Max_Wind_Speed"),
+        spark_sum("Precip_mm").alias("Total_Precip_mm"),
+        avg("Humidity_%").alias("Avg_Humidity"),
+        avg("Pressure_hPa").alias("Avg_Pressure")
+    )
+
+    agg_df = aggregated_stream.withColumn(
+        "es_id", concat(col("Location"), lit("_"), col("window.start").cast("string"))
+    ).withColumn("Window_Start", col("window.start")) \
+     .withColumn("Window_End", col("window.end")) \
+     .drop("window")
+
+    query_agg = agg_df.writeStream \
+        .outputMode("update") \
+        .foreachBatch(write_agg_to_es) \
+        .option("checkpointLocation", CHECKPOINT_AGG) \
+        .trigger(processingTime="10 seconds") \
+        .start()
+
+    # ====================================================================
+    # LẮNG NGHE LỖI/KẾT THÚC TỪ CẢ 2 LUỒNG
+    # ====================================================================
+    spark.streams.awaitAnyTermination()
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,6 @@
 import os
+import re
+from datetime import date as date_cls
 from typing import Optional, List, Any, Dict
 
 from elasticsearch import Elasticsearch
@@ -9,6 +11,49 @@ ES_HOST = os.getenv("ES_HOST", "http://elasticsearch:9200")
 ES_INDEX = os.getenv("ES_INDEX", "weather_realtime")
 ES_INDEX_BATCH_DAILY = os.getenv("ES_INDEX_BATCH_DAILY", "weather_batch_daily")
 ES_INDEX_BATCH_STATS = os.getenv("ES_INDEX_BATCH_STATS", "weather_batch_stats")
+ES_INDEX_BATCH_YOY = os.getenv("ES_INDEX_BATCH_YOY", "weather_batch_yoy")
+
+BATCH_LOCATION_MERGES = {
+    "Hà Giang": "Tuyên Quang",
+    "Yên Bái": "Lào Cai",
+    "Bắc Kạn": "Thái Nguyên",
+    "Vĩnh Phúc": "Phú Thọ",
+    "Hòa Bình": "Phú Thọ",
+    "Hoà Bình": "Phú Thọ",
+    "Bắc Giang": "Bắc Ninh",
+    "Thái Bình": "Hưng Yên",
+    "Hải Dương": "Hải Phòng",
+    "Hà Nam": "Ninh Bình",
+    "Nam Định": "Ninh Bình",
+    "Quảng Bình": "Quảng Trị",
+    "Quảng Nam": "Đà Nẵng",
+    "Kon Tum": "Quảng Ngãi",
+    "Bình Định": "Gia Lai",
+    "Ninh Thuận": "Khánh Hòa",
+    "Đắk Nông": "Lâm Đồng",
+    "Bình Thuận": "Lâm Đồng",
+    "Phú Yên": "Đắk Lắk",
+    "Đắk Lăk": "Đắk Lắk",
+    "Bà Rịa - Vũng Tàu": "Hồ Chí Minh",
+    "Bà Rịa Vũng Tàu": "Hồ Chí Minh",
+    "Bình Dương": "Hồ Chí Minh",
+    "TP Hồ Chí Minh": "Hồ Chí Minh",
+    "TP. Hồ Chí Minh": "Hồ Chí Minh",
+    "TP.HCM": "Hồ Chí Minh",
+    "TP HCM": "Hồ Chí Minh",
+    "Sài Gòn": "Hồ Chí Minh",
+    "Bình Phước": "Đồng Nai",
+    "Long An": "Tây Ninh",
+    "Sóc Trăng": "Cần Thơ",
+    "Hậu Giang": "Cần Thơ",
+    "Bến Tre": "Vĩnh Long",
+    "Trà Vinh": "Vĩnh Long",
+    "Tiền Giang": "Đồng Tháp",
+    "Bạc Liêu": "Cà Mau",
+    "Kiên Giang": "An Giang",
+    "Thừa Thiên Huế": "Huế",
+    "Thừa Thiên-Huế": "Huế",
+}
 
 router = APIRouter()
 
@@ -27,6 +72,19 @@ def build_location_query(location: Optional[str]) -> Dict[str, Any]:
     if not location:
         return {"match_all": {}}
     return {"term": {"Location.keyword": location}}
+
+
+def normalize_batch_location(location: Optional[str]) -> Optional[str]:
+    if not location:
+        return location
+    normalized = re.sub(r",\s*(VN|Việt Nam)\s*$", "", location).strip()
+    normalized = re.sub(r"^(Tỉnh|Thành phố)\s+", "", normalized).strip()
+    normalized = re.sub(r"\s+", " ", normalized)
+    return BATCH_LOCATION_MERGES.get(normalized, normalized)
+
+
+def build_batch_location_query(location: Optional[str]) -> Dict[str, Any]:
+    return build_location_query(normalize_batch_location(location))
 
 
 @router.get("/health")
@@ -98,6 +156,33 @@ def get_weather_history(
     return [h.get("_source", {}) for h in hits]
 
 
+@router.get("/weather/batch/yoy")
+def get_batch_yoy(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm; alias realtime hoặc tên tỉnh cũ sẽ được chuẩn hóa sang 34 tỉnh/thành mới.",
+    ),
+    limit: int = Query(50, ge=1, le=500, description="Số bản ghi so sánh cùng kỳ tối đa cần trả về"),
+) -> List[Dict[str, Any]]:
+    es = get_es_client()
+    query = build_batch_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_YOY,
+            body={
+                "size": limit,
+                "query": query,
+                "sort": [{"date": {"order": "desc"}}],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    hits = resp.get("hits", {}).get("hits", [])
+    return [h.get("_source", {}) for h in hits]
+
+
 @router.get("/weather/locations")
 def list_locations(limit: int = Query(20, ge=1, le=100)) -> List[str]:
     es = get_es_client()
@@ -132,7 +217,7 @@ def get_batch_daily(
     limit: int = Query(50, ge=1, le=500, description="Số bản ghi batch tối đa cần trả về"),
 ) -> List[Dict[str, Any]]:
     es = get_es_client()
-    query = build_location_query(location)
+    query = build_batch_location_query(location)
 
     try:
         resp = es.search(
@@ -150,6 +235,134 @@ def get_batch_daily(
     return [h.get("_source", {}) for h in hits]
 
 
+@router.get("/weather/batch/humidity")
+def get_batch_humidity(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ lấy dữ liệu độ ẩm batch cho tất cả địa điểm.",
+    ),
+    limit: int = Query(50, ge=1, le=500, description="Số bản ghi độ ẩm tối đa cần trả về"),
+) -> List[Dict[str, Any]]:
+    es = get_es_client()
+    query = build_batch_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": limit,
+                "query": query,
+                "sort": [{"date": {"order": "desc"}}],
+                "_source": ["Location", "date", "avg_humidity", "avg_temp", "total_precip"],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    hits = resp.get("hits", {}).get("hits", [])
+    return [h.get("_source", {}) for h in hits]
+
+
+@router.get("/weather/batch/humidity/summary")
+def get_batch_humidity_summary(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ tính tổng hợp độ ẩm cho tất cả địa điểm.",
+    )
+) -> Dict[str, Any]:
+    es = get_es_client()
+    normalized_location = normalize_batch_location(location)
+    query = build_batch_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 0,
+                "query": query,
+                "aggs": {
+                    "avg_humidity": {"avg": {"field": "avg_humidity"}},
+                    "min_humidity": {"min": {"field": "avg_humidity"}},
+                    "max_humidity": {"max": {"field": "avg_humidity"}},
+                },
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    aggs = resp.get("aggregations", {})
+    return {
+        "location": normalized_location or "all",
+        "avg_humidity": _r(aggs.get("avg_humidity", {}).get("value")),
+        "min_humidity": _r(aggs.get("min_humidity", {}).get("value")),
+        "max_humidity": _r(aggs.get("max_humidity", {}).get("value")),
+    }
+
+
+@router.get("/weather/batch/precipitation")
+def get_batch_precipitation(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ lấy dữ liệu lượng mưa batch cho tất cả địa điểm.",
+    ),
+    limit: int = Query(50, ge=1, le=500, description="Số bản ghi lượng mưa tối đa cần trả về"),
+) -> List[Dict[str, Any]]:
+    es = get_es_client()
+    query = build_batch_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": limit,
+                "query": query,
+                "sort": [{"date": {"order": "desc"}}],
+                "_source": ["Location", "date", "total_precip", "avg_temp", "avg_humidity"],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    hits = resp.get("hits", {}).get("hits", [])
+    return [h.get("_source", {}) for h in hits]
+
+
+@router.get("/weather/batch/precipitation/summary")
+def get_batch_precipitation_summary(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ tính tổng hợp lượng mưa cho tất cả địa điểm.",
+    )
+) -> Dict[str, Any]:
+    es = get_es_client()
+    normalized_location = normalize_batch_location(location)
+    query = build_batch_location_query(location)
+
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 0,
+                "query": query,
+                "aggs": {
+                    "avg_precip": {"avg": {"field": "total_precip"}},
+                    "min_precip": {"min": {"field": "total_precip"}},
+                    "max_precip": {"max": {"field": "total_precip"}},
+                },
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    aggs = resp.get("aggregations", {})
+    return {
+        "location": normalized_location or "all",
+        "avg_precip": _r(aggs.get("avg_precip", {}).get("value")),
+        "min_precip": _r(aggs.get("min_precip", {}).get("value")),
+        "max_precip": _r(aggs.get("max_precip", {}).get("value")),
+    }
+
+
 @router.get("/weather/batch/summary")
 def get_batch_summary(
     location: Optional[str] = Query(
@@ -158,7 +371,8 @@ def get_batch_summary(
     )
 ) -> Dict[str, Any]:
     es = get_es_client()
-    query = build_location_query(location)
+    normalized_location = normalize_batch_location(location)
+    query = build_batch_location_query(location)
 
     try:
         resp = es.search(
@@ -173,6 +387,10 @@ def get_batch_summary(
 
     hits = resp.get("hits", {}).get("hits", [])
     if not hits:
+        if normalized_location:
+            fallback = build_batch_summary_from_daily(es, normalized_location)
+            if fallback:
+                return fallback
         raise HTTPException(status_code=404, detail="Không tìm thấy dữ liệu batch cho location này")
 
     return hits[0].get("_source", {})
@@ -188,23 +406,150 @@ def _r(v):
         return v
 
 
+def build_batch_summary_from_daily(es: Elasticsearch, location: str) -> Optional[Dict[str, Any]]:
+    """Fallback when weather_batch_stats is empty: derive summary from daily aggregates."""
+    daily_query = {"term": {"Location.keyword": location}}
+
+    try:
+        hottest_resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 1,
+                "query": daily_query,
+                "sort": [
+                    {"max_temp": {"order": "desc"}},
+                    {"avg_temp": {"order": "desc"}},
+                ],
+            },
+        )
+        coldest_resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 1,
+                "query": daily_query,
+                "sort": [
+                    {"min_temp": {"order": "asc"}},
+                    {"avg_temp": {"order": "asc"}},
+                ],
+            },
+        )
+        latest_resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 1,
+                "query": daily_query,
+                "sort": [{"date": {"order": "desc"}}],
+            },
+        )
+        heat_resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 5000,
+                "query": daily_query,
+                "sort": [{"date": {"order": "asc"}}],
+                "_source": ["Location", "date", "avg_temp", "max_temp"],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    hottest_hits = hottest_resp.get("hits", {}).get("hits", [])
+    coldest_hits = coldest_resp.get("hits", {}).get("hits", [])
+    latest_hits = latest_resp.get("hits", {}).get("hits", [])
+    if not hottest_hits or not coldest_hits or not latest_hits:
+        return None
+
+    longest = {
+        "longest_heatwave_days": 0,
+        "heatwave_start": "",
+        "heatwave_end": "",
+        "heatwave_max_temp": 0.0,
+    }
+    current = None
+    previous_date = None
+
+    for hit in heat_resp.get("hits", {}).get("hits", []):
+        src = hit.get("_source", {})
+        date = src.get("date")
+        avg_temp = src.get("avg_temp")
+        max_temp = src.get("max_temp") or 0.0
+        is_heat_day = avg_temp is not None and float(avg_temp) >= 30.0
+
+        if not is_heat_day:
+            current = None
+            previous_date = date
+            continue
+
+        consecutive = False
+        if current and previous_date and date:
+            previous = date_cls.fromisoformat(previous_date)
+            current_date = date_cls.fromisoformat(date)
+            consecutive = (current_date - previous).days == 1
+
+        if not current or not consecutive:
+            current = {
+                "longest_heatwave_days": 0,
+                "heatwave_start": date,
+                "heatwave_end": date,
+                "heatwave_max_temp": 0.0,
+            }
+
+        current["longest_heatwave_days"] += 1
+        current["heatwave_end"] = date
+        current["heatwave_max_temp"] = max(float(current["heatwave_max_temp"]), float(max_temp))
+        if current["longest_heatwave_days"] > longest["longest_heatwave_days"]:
+            longest = current.copy()
+
+        previous_date = date
+
+    hottest = hottest_hits[0].get("_source", {})
+    coldest = coldest_hits[0].get("_source", {})
+    latest = latest_hits[0].get("_source", {})
+
+    return {
+        "Location": location,
+        "hottest_date": hottest.get("date"),
+        "hottest_temp": hottest.get("max_temp"),
+        "coldest_date": coldest.get("date"),
+        "coldest_temp": coldest.get("min_temp"),
+        "latest_date": latest.get("date"),
+        "latest_avg_temp": latest.get("avg_temp"),
+        **longest,
+    }
+
+
 @router.get("/weather/chart")
 def get_chart_data(
     location: str = Query(..., description="Địa điểm (realtime format, e.g. 'Hà Nội, VN')"),
-    days: int = Query(7, ge=1, le=365, description="Số ngày"),
+    days: int = Query(30, ge=1, le=365, description="Số ngày dùng khi không truyền date range"),
+    start_date: Optional[date_cls] = Query(None, description="Ngày bắt đầu, định dạng YYYY-MM-DD"),
+    end_date: Optional[date_cls] = Query(None, description="Ngày kết thúc, định dạng YYYY-MM-DD"),
 ) -> Dict[str, Any]:
     """Lấy dữ liệu biểu đồ hoàn toàn từ batch daily (temp, humidity, precip)."""
     es = get_es_client()
 
-    batch_loc = location.rsplit(", ", 1)[0] if ", " in location else location
+    batch_loc = normalize_batch_location(location)
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=400, detail="start_date phải nhỏ hơn hoặc bằng end_date")
+
+    filters: List[Dict[str, Any]] = [{"term": {"Location.keyword": batch_loc}}]
+    if start_date or end_date:
+        date_range: Dict[str, str] = {}
+        if start_date:
+            date_range["gte"] = start_date.isoformat()
+        if end_date:
+            date_range["lte"] = end_date.isoformat()
+        filters.append({"range": {"date": date_range}})
+
+    size = 1000 if start_date or end_date else days
 
     chart_map: Dict[str, Dict[str, Any]] = {}
     try:
         batch_resp = es.search(
             index=ES_INDEX_BATCH_DAILY,
             body={
-                "size": days,
-                "query": {"term": {"Location.keyword": batch_loc}},
+                "size": size,
+                "query": {"bool": {"filter": filters}},
                 "sort": [{"date": {"order": "desc"}}],
             },
         )
@@ -223,5 +568,14 @@ def get_chart_data(
     except Exception:
         pass
 
-    sorted_data = sorted(chart_map.values(), key=lambda x: x["date"])[-days:]
-    return {"location": location, "days": days, "data": sorted_data}
+    sorted_data = sorted(chart_map.values(), key=lambda x: x["date"])
+    if not (start_date or end_date):
+        sorted_data = sorted_data[-days:]
+
+    return {
+        "location": location,
+        "days": days,
+        "start_date": start_date.isoformat() if start_date else None,
+        "end_date": end_date.isoformat() if end_date else None,
+        "data": sorted_data,
+    }
