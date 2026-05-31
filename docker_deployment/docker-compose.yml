@@ -176,7 +176,6 @@ services:
     volumes:
       - ../airflow/dags:/opt/airflow/dags
       - ../airflow/logs:/opt/airflow/logs
-      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8080:8080"
     command: api-server
@@ -196,7 +195,7 @@ services:
     volumes:
       - ../airflow/dags:/opt/airflow/dags
       - ../airflow/logs:/opt/airflow/logs
-      - ../crawler/.env:/opt/airflow/crawler.env
+      - ../crawler:/opt/airflow/crawler
       - /var/run/docker.sock:/var/run/docker.sock
     command: scheduler
     mem_limit: 768m
@@ -215,7 +214,7 @@ services:
     volumes:
       - ../airflow/dags:/opt/airflow/dags
       - ../airflow/logs:/opt/airflow/logs
-      - ../crawler/.env:/opt/airflow/crawler.env
+      - ../crawler:/opt/airflow/crawler
       - /var/run/docker.sock:/var/run/docker.sock
     command: dag-processor
     mem_limit: 512m
@@ -235,7 +234,7 @@ services:
     volumes:
       - ../airflow/dags:/opt/airflow/dags
       - ../airflow/logs:/opt/airflow/logs
-      - ../crawler/.env:/opt/airflow/crawler.env
+      - ../crawler:/opt/airflow/crawler
       - /var/run/docker.sock:/var/run/docker.sock
     command: triggerer
     mem_limit: 512m
