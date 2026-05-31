@@ -1,3 +1,4 @@
+import logging
 import os
 
 from elasticsearch import Elasticsearch
@@ -28,13 +29,22 @@ from pyspark.sql.functions import (
     udf,
     when,
 )
-from pyspark.sql.types import StringType, StructField, StructType
+from pyspark.sql.types import DoubleType, StringType, StructField, StructType
 from pyspark.sql.window import Window
 
 
 MINIO_USER = os.getenv("MINIO_ROOT_USER", "admin")
 MINIO_PASS = os.getenv("MINIO_ROOT_PASSWORD", "password123")
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://35.240.199.161:9000")
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://35.240.139.79:9000")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "raw-weather-data")
+HISTORICAL_PREFIX = os.getenv("HISTORICAL_PREFIX", "historical")
+HISTORICAL_FOLDERS = [
+    folder.strip()
+    for folder in os.getenv("HISTORICAL_FOLDERS", "34,29").split(",")
+    if folder.strip()
+]
+LOG_BATCH_COUNTS = os.getenv("LOG_BATCH_COUNTS", "false").lower() == "true"
+PROVINCE_MERGE_CUTOFF_DATE = os.getenv("PROVINCE_MERGE_CUTOFF_DATE", "2025-07-01")
 ES_HOST = os.getenv("ES_HOST", "elasticsearch")
 ES_INDEX_DAILY = "weather_batch_daily"
 ES_INDEX_STATS = "weather_batch_stats"
@@ -48,6 +58,28 @@ DAILY_HEAT_SCHEMA = StructType(
     [
         StructField("temp_category", StringType(), False),
         StructField("heat_alert_level", StringType(), False),
+    ]
+)
+RAW_WEATHER_SCHEMA = StructType(
+    [
+        StructField("address", StringType(), True),
+        StructField("resolvedAddress", StringType(), True),
+        StructField("datetime", StringType(), True),
+        StructField("temp", DoubleType(), True),
+        StructField("humidity", DoubleType(), True),
+        StructField("precip", DoubleType(), True),
+        StructField(
+            "currentConditions",
+            StructType(
+                [
+                    StructField("datetime", StringType(), True),
+                    StructField("temp", DoubleType(), True),
+                    StructField("humidity", DoubleType(), True),
+                    StructField("precip", DoubleType(), True),
+                ]
+            ),
+            True,
+        ),
     ]
 )
 
@@ -105,6 +137,7 @@ def load_province_mapping(spark: SparkSession, mapping_path: str) -> DataFrame:
 
     mapping_df = source_df.select(
         explode(array_union(array(col("old_province")), col("aliases"))).alias("source_province"),
+        col("old_province"),
         col("canonical_province"),
     ).dropDuplicates(["source_province", "canonical_province"])
     ambiguous_sources = (
@@ -118,7 +151,7 @@ def load_province_mapping(spark: SparkSession, mapping_path: str) -> DataFrame:
     return mapping_df
 
 
-def apply_province_mapping(raw_df: DataFrame, mapping_df: DataFrame) -> DataFrame:
+def apply_province_mapping(raw_df: DataFrame, mapping_df: DataFrame, cutoff_date: str = PROVINCE_MERGE_CUTOFF_DATE) -> DataFrame:
     normalized_df = raw_df.withColumn(
         "_normalized_province", normalize_location_column(col("resolvedAddress"))
     )
@@ -127,21 +160,42 @@ def apply_province_mapping(raw_df: DataFrame, mapping_df: DataFrame) -> DataFram
         normalized_df["_normalized_province"] == mapping_df["source_province"],
         how="left",
     )
-    unmatched_count = (
-        joined_df.filter(col("canonical_province").isNull())
-        .select("_normalized_province")
-        .distinct()
-        .count()
-    )
-    print(f"Batch unmatched normalized locations: {unmatched_count}")
+    if LOG_BATCH_COUNTS:
+        unmatched_count = (
+            joined_df.filter(col("canonical_province").isNull())
+            .select("_normalized_province")
+            .distinct()
+            .count()
+        )
+        logger.info("Batch unmatched normalized locations: %d", unmatched_count)
+
+    old_location = coalesce(col("old_province"), col("_normalized_province"))
+    canonical_location = coalesce(col("canonical_province"), col("_normalized_province"))
+    if "date" in raw_df.columns:
+        location_col = when(to_date(col("date")) < to_date(lit(cutoff_date)), old_location).otherwise(canonical_location)
+        province_view_col = when(
+            to_date(col("date")) < to_date(lit(cutoff_date)),
+            lit("pre_merge_63"),
+        ).otherwise(lit("post_merge_34"))
+    else:
+        location_col = canonical_location
+        province_view_col = lit("post_merge_34")
+
     return (
-        joined_df.withColumn("Location", coalesce(col("canonical_province"), col("_normalized_province")))
-        .drop("_normalized_province", "source_province", "canonical_province")
+        joined_df.withColumn("Location", location_col)
+        .withColumn("old_location", old_location)
+        .withColumn("canonical_location", canonical_location)
+        .withColumn("province_view", province_view_col)
+        .drop("_normalized_province", "source_province", "old_province", "canonical_province")
     )
 
 
 def build_daily_aggregates(valid_df: DataFrame) -> DataFrame:
-    daily_df = valid_df.groupBy("Location", "date").agg(
+    group_columns = ["Location", "date"]
+    if "province_view" in valid_df.columns:
+        group_columns.append("province_view")
+
+    daily_df = valid_df.groupBy(*group_columns).agg(
         avg("temp").alias("avg_temp"),
         min("temp").alias("min_temp"),
         max("temp").alias("max_temp"),
@@ -221,28 +275,67 @@ def write_to_elasticsearch(df: DataFrame, index: str) -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Logging setup
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("spark_batch")
+
+
 def main():
-    print("Khởi động Batch Job: Kéo dữ liệu từ MinIO")
-    print(f"Batch MinIO endpoint: {MINIO_ENDPOINT}")
+    logger.info("========== Khởi động Batch Job: Kéo dữ liệu từ MinIO ==========")
+    logger.info("MinIO endpoint  : %s", MINIO_ENDPOINT)
+    logger.info("MinIO user      : %s", MINIO_USER)
     spark = (
         SparkSession.builder.appName("Weather-Batch-Layer")
+        # hadoop-aws JAR: bắt buộc khi chạy local (trong Docker đã được bundled sẵn)
+        .config(
+            "spark.jars.packages",
+            "org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262",
+        )
         .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT)
         .config("spark.hadoop.fs.s3a.access.key", MINIO_USER)
         .config("spark.hadoop.fs.s3a.secret.key", MINIO_PASS)
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.sql.session.timeZone", "Asia/Ho_Chi_Minh")
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+        .config(
+            "spark.hadoop.fs.s3a.aws.credentials.provider",
+            "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+        )
+        .config("spark.sql.session.timeZone", "Asia/Ho_Chi_Minh")
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
     spark.conf.set("spark.sql.shuffle.partitions", "200")
+    logger.info("SparkSession khởi tạo thành công (app: %s)", spark.sparkContext.appName)
 
     paths_to_read = [
-        "s3a://raw-weather-data/topics/weather_data/*/*.json",
-        "s3a://raw-weather-data/historical/*",
+        f"s3a://{MINIO_BUCKET}/{HISTORICAL_PREFIX}/{folder}/*"
+        for folder in HISTORICAL_FOLDERS
     ]
-    print(f"Batch input paths: {paths_to_read}")
-    df = spark.read.option("mode", "DROPMALFORMED").json(paths_to_read)
+    logger.info("Bắt đầu đọc dữ liệu từ MinIO — %d path(s):", len(paths_to_read))
+    for p in paths_to_read:
+        logger.info("  • %s", p)
+
+    try:
+        df = spark.read.schema(RAW_WEATHER_SCHEMA).option("mode", "DROPMALFORMED").json(paths_to_read)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[MinIO READ] ✗ Không thể đọc dữ liệu từ MinIO. Lỗi: %s", exc)
+        logger.error(
+            "  → Kiểm tra lại: endpoint (%s), credentials, bucket/path tồn tại hay không.",
+            MINIO_ENDPOINT,
+        )
+        raise
+
+    if LOG_BATCH_COUNTS:
+        total_rows = df.count()
+        logger.info("[MinIO READ] Tổng số row sau khi đọc tất cả path: %d", total_rows)
+    else:
+        logger.info("[MinIO READ] Đã tạo DataFrame từ MinIO; bỏ qua count nguồn để job chạy nhanh hơn.")
 
     if "address" in df.columns and "resolvedAddress" in df.columns:
         loc_col = coalesce(col("address"), col("resolvedAddress"))
@@ -274,17 +367,27 @@ def main():
     df = apply_province_mapping(df, load_province_mapping(spark, mapping_path))
 
     valid_df = df.filter(col("Local_Time").isNotNull() & col("Location").isNotNull())
-    print(f"Batch valid raw rows: {valid_df.count()}")
+    if LOG_BATCH_COUNTS:
+        valid_count = valid_df.count()
+        logger.info("Batch valid raw rows (sau filter): %d", valid_count)
 
     daily_df = build_daily_aggregates(valid_df).persist(StorageLevel.MEMORY_AND_DISK)
-    print(f"Batch daily rows: {daily_df.count()}")
+    daily_count = daily_df.count()
+    logger.info("Batch daily aggregate rows: %d", daily_count)
     write_to_elasticsearch(daily_df, ES_INDEX_DAILY)
+    logger.info("Đã ghi daily data vào ES index '%s'.", ES_INDEX_DAILY)
 
     yoy_df = build_yoy_comparison(daily_df)
-    print(f"Batch YoY rows: {yoy_df.count()}")
+    yoy_count = yoy_df.count()
+    logger.info("Batch YoY rows: %d", yoy_count)
     write_to_elasticsearch(yoy_df, ES_INDEX_YOY)
+    logger.info("Đã ghi YoY data vào ES index '%s'.", ES_INDEX_YOY)
 
-    window_loc = Window.partitionBy("Location").orderBy("date")
+    summary_group = ["Location"]
+    if "province_view" in daily_df.columns:
+        summary_group.append("province_view")
+
+    window_loc = Window.partitionBy(*summary_group).orderBy("date")
     daily_ordered = daily_df.withColumn("prev_date", lag("date").over(window_loc))
     daily_ordered = daily_ordered.withColumn(
         "heat_day", when(col("avg_temp") >= HEATWAVE_THRESHOLD, lit(1)).otherwise(lit(0))
@@ -309,54 +412,57 @@ def main():
         ),
     )
 
-    heatwave_df = daily_ordered.filter(col("heat_day") == 1).groupBy("Location", "group_id").agg(
+    heatwave_df = daily_ordered.filter(col("heat_day") == 1).groupBy(*summary_group, "group_id").agg(
         min("date").alias("start_date"),
         max("date").alias("end_date"),
         spark_sum("heat_day").alias("length_days"),
         max("max_temp").alias("max_temp"),
     )
-    rank_hot = Window.partitionBy("Location").orderBy(col("max_temp").desc(), col("length_days").desc())
+    rank_hot = Window.partitionBy(*summary_group).orderBy(col("max_temp").desc(), col("length_days").desc())
     heatwave_ranked = heatwave_df.withColumn("rank", row_number().over(rank_hot)).filter(col("rank") == 1)
 
     hottest = (
         daily_df.withColumn(
             "rank",
-            row_number().over(Window.partitionBy("Location").orderBy(col("max_temp").desc(), col("avg_temp").desc())),
+            row_number().over(Window.partitionBy(*summary_group).orderBy(col("max_temp").desc(), col("avg_temp").desc())),
         )
         .filter(col("rank") == 1)
-        .select(col("Location"), col("date").alias("hottest_date"), col("max_temp").alias("hottest_temp"))
+        .select(*[col(c) for c in summary_group], col("date").alias("hottest_date"), col("max_temp").alias("hottest_temp"))
     )
     coldest = (
         daily_df.withColumn(
             "rank",
-            row_number().over(Window.partitionBy("Location").orderBy(col("min_temp").asc(), col("avg_temp").asc())),
+            row_number().over(Window.partitionBy(*summary_group).orderBy(col("min_temp").asc(), col("avg_temp").asc())),
         )
         .filter(col("rank") == 1)
-        .select(col("Location"), col("date").alias("coldest_date"), col("min_temp").alias("coldest_temp"))
+        .select(*[col(c) for c in summary_group], col("date").alias("coldest_date"), col("min_temp").alias("coldest_temp"))
     )
     latest = (
-        daily_df.withColumn("rank", row_number().over(Window.partitionBy("Location").orderBy(col("date").desc())))
+        daily_df.withColumn("rank", row_number().over(Window.partitionBy(*summary_group).orderBy(col("date").desc())))
         .filter(col("rank") == 1)
-        .select(col("Location"), col("date").alias("latest_date"), col("avg_temp").alias("latest_avg_temp"))
+        .select(*[col(c) for c in summary_group], col("date").alias("latest_date"), col("avg_temp").alias("latest_avg_temp"))
     )
     summary_df = (
-        hottest.join(coldest, on="Location")
-        .join(latest, on="Location")
+        hottest.join(coldest, on=summary_group)
+        .join(latest, on=summary_group)
         .join(
             heatwave_ranked.select(
-                col("Location"),
+                *[col(c) for c in summary_group],
                 col("length_days").alias("longest_heatwave_days"),
                 col("start_date").alias("heatwave_start"),
                 col("end_date").alias("heatwave_end"),
                 col("max_temp").alias("heatwave_max_temp"),
             ),
-            on="Location",
+            on=summary_group,
             how="left",
         )
         .fillna({"longest_heatwave_days": 0, "heatwave_max_temp": 0.0})
     )
-    print(f"Batch summary rows: {summary_df.count()}")
+    summary_count = summary_df.count()
+    logger.info("Batch summary rows: %d", summary_count)
     write_to_elasticsearch(summary_df, ES_INDEX_STATS)
+    logger.info("Đã ghi summary/stats data vào ES index '%s'.", ES_INDEX_STATS)
+    logger.info("========== Batch Job hoàn thành ==========")
 
 
 if __name__ == "__main__":

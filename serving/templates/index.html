@@ -137,6 +137,17 @@
         <!-- Batch Summary Section -->
         <section id="batch-summary-section" class="card section-panel hidden" role="tabpanel" aria-labelledby="tab-batch">
           <h2>Báo cáo Thống kê Toàn thời gian (Batch Data)</h2>
+          <div class="form-row">
+            <label for="batch-period">Giai đoạn tỉnh</label>
+            <select id="batch-period">
+              <option value="pre_merge_63">Trước / đến 30-06-2025 (63 tỉnh)</option>
+              <option value="post_merge_34">Sau 30-06-2025 (34 tỉnh)</option>
+            </select>
+            <label for="batch-location">Chọn tỉnh</label>
+            <select id="batch-location">
+              <option value="">Đang tải danh sách tỉnh...</option>
+            </select>
+          </div>
           <div class="weather-grid">
             <div class="item">
               <span class="label">Nóng nhất lịch sử</span>
@@ -175,6 +186,19 @@
               <h2 class="chart-title">Lịch sử thời tiết theo khoảng ngày</h2>
             </div>
             <div class="date-range-panel">
+              <div class="date-field">
+                <label for="chart-period">Giai đoạn tỉnh</label>
+                <select id="chart-period">
+                  <option value="pre_merge_63">Trước / đến 30-06-2025 (63 tỉnh)</option>
+                  <option value="post_merge_34">Sau 30-06-2025 (34 tỉnh)</option>
+                </select>
+              </div>
+              <div class="date-field">
+                <label for="chart-location">Tỉnh</label>
+                <select id="chart-location">
+                  <option value="">Đang tải...</option>
+                </select>
+              </div>
               <div class="date-field">
                 <label for="start-date">Từ ngày</label>
                 <input id="start-date" type="date" />
@@ -248,6 +272,39 @@
     <script>
       const $ = (id) => document.getElementById(id);
       const DAY_MS = 24 * 60 * 60 * 1000;
+      const PRE_MERGE_VIEW = "pre_merge_63";
+      const POST_MERGE_VIEW = "post_merge_34";
+      const MERGE_LAST_63_DATE = "2025-06-30";
+      const MERGE_FIRST_34_DATE = "2025-07-01";
+
+      async function loadBatchLocations(period, selectId) {
+        const select = $(selectId);
+        if (!select) return;
+        const previous = select.value;
+        select.innerHTML = '<option value="">Đang tải danh sách tỉnh...</option>';
+        try {
+          const params = new URLSearchParams({ province_view: period, limit: "200" });
+          const res = await fetch(`/api/weather/batch/locations?${params}`);
+          if (!res.ok) throw new Error("Không tải được danh sách tỉnh");
+          const locations = await res.json();
+          select.innerHTML = locations.map((loc) => `<option value="${escapeHtml(loc)}">${escapeHtml(loc)}</option>`).join("");
+          if (previous && locations.includes(previous)) select.value = previous;
+        } catch (e) {
+          select.innerHTML = '<option value="">Không có dữ liệu</option>';
+        }
+      }
+
+      function setChartRangeForPeriod(period) {
+        if (period === PRE_MERGE_VIEW) {
+          $("start-date").value = "2025-06-01";
+          $("end-date").value = MERGE_LAST_63_DATE;
+        } else {
+          $("start-date").value = MERGE_FIRST_34_DATE;
+          $("end-date").value = "2025-07-30";
+        }
+        clearQuickRangeSelection();
+        updateSelectedRangeLabel();
+      }
 
       /* ---------- Current Weather ---------- */
       async function fetchLatest() {
@@ -618,12 +675,14 @@
 
       /* ---------- Batch Summary ---------- */
       async function fetchBatchSummary() {
-        const loc = $("location").value;
+        const loc = $("batch-location").value;
         if (!loc) return;
         try {
-          const batchLoc = loc.includes(", ") ? loc.split(", ")[0] : loc;
-          const params = new URLSearchParams({ location: batchLoc });
-          const res = await fetch(`/api/weather/batch/summary?location=${encodeURIComponent(batchLoc)}`);
+          const params = new URLSearchParams({
+            location: loc,
+            province_view: $("batch-period").value,
+          });
+          const res = await fetch(`/api/weather/batch/summary?${params}`);
           if (!res.ok) throw new Error("No data");
           const d = await res.json();
           
@@ -705,7 +764,7 @@
       }
 
       async function fetchChartData() {
-        const loc = $("location").value;
+        const loc = $("chart-location").value;
         if (!loc) return;
 
         $("chart-status").textContent = "Đang tải biểu đồ...";
@@ -719,7 +778,11 @@
           }
 
           updateSelectedRangeLabel();
-          const params = new URLSearchParams({ location: loc, days: currentDays });
+          const params = new URLSearchParams({
+            location: loc,
+            province_view: $("chart-period").value,
+            days: currentDays,
+          });
           if (start) params.set("start_date", start);
           if (end) params.set("end_date", end);
           const res = await fetch(`/api/weather/chart?${params}`);
@@ -896,7 +959,30 @@
           if (active) FEATURE_FETCH[active.dataset.target]?.();
         });
 
+        $("batch-period").addEventListener("change", async () => {
+          await loadBatchLocations($("batch-period").value, "batch-location");
+          fetchBatchSummary();
+        });
+        $("batch-location").addEventListener("change", fetchBatchSummary);
+
+        $("chart-period").addEventListener("change", async () => {
+          setChartRangeForPeriod($("chart-period").value);
+          await loadBatchLocations($("chart-period").value, "chart-location");
+          fetchChartData();
+        });
+        $("chart-location").addEventListener("change", fetchChartData);
+
         setDateRangeFromDays(currentDays);
+        $("batch-period").value = PRE_MERGE_VIEW;
+        $("chart-period").value = PRE_MERGE_VIEW;
+        setChartRangeForPeriod(PRE_MERGE_VIEW);
+        Promise.all([
+          loadBatchLocations(PRE_MERGE_VIEW, "batch-location"),
+          loadBatchLocations(PRE_MERGE_VIEW, "chart-location"),
+        ]).then(() => {
+          const active = document.querySelector(".feature-btn.active");
+          if (active) FEATURE_FETCH[active.dataset.target]?.();
+        });
       });
     </script>
   </body>

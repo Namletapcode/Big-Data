@@ -34,18 +34,25 @@ class BatchTransformationsTest(unittest.TestCase):
         mapping_df = load_province_mapping(self.spark, DEFAULT_PROVINCE_MAPPING_PATH)
         raw_df = self.spark.createDataFrame(
             [
-                ("Tỉnh Hà Giang, Việt Nam",),
-                ("Thành phố Hồ Chí Minh, VN",),
-                ("Thừa Thiên-Huế, VN",),
+                ("Tỉnh Hà Giang, Việt Nam", "2025-06-30"),
+                ("Tỉnh Hà Giang, Việt Nam", "2025-07-01"),
+                ("Thành phố Hồ Chí Minh, VN", "2025-07-01"),
+                ("Thừa Thiên-Huế, VN", "2025-07-01"),
             ],
-            ["resolvedAddress"],
+            ["resolvedAddress", "date"],
         )
 
         mapped_df = apply_province_mapping(raw_df, mapping_df)
-        locations = {row.Location for row in mapped_df.select("Location").collect()}
+        rows = {
+            (row.resolvedAddress, row.date): (row.Location, row.province_view)
+            for row in mapped_df.select("resolvedAddress", "date", "Location", "province_view").collect()
+        }
         plan = mapped_df._jdf.queryExecution().executedPlan().toString()
 
-        self.assertEqual(locations, {"Tuyên Quang", "Hồ Chí Minh", "Huế"})
+        self.assertEqual(rows[("Tỉnh Hà Giang, Việt Nam", "2025-06-30")], ("Hà Giang", "pre_merge_63"))
+        self.assertEqual(rows[("Tỉnh Hà Giang, Việt Nam", "2025-07-01")], ("Tuyên Quang", "post_merge_34"))
+        self.assertEqual(rows[("Thành phố Hồ Chí Minh, VN", "2025-07-01")], ("Hồ Chí Minh", "post_merge_34"))
+        self.assertEqual(rows[("Thừa Thiên-Huế, VN", "2025-07-01")], ("Huế", "post_merge_34"))
         self.assertIn("BroadcastHashJoin", plan)
 
     def test_heat_classification_thresholds(self):

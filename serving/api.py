@@ -12,6 +12,9 @@ ES_INDEX = os.getenv("ES_INDEX", "weather_realtime")
 ES_INDEX_BATCH_DAILY = os.getenv("ES_INDEX_BATCH_DAILY", "weather_batch_daily")
 ES_INDEX_BATCH_STATS = os.getenv("ES_INDEX_BATCH_STATS", "weather_batch_stats")
 ES_INDEX_BATCH_YOY = os.getenv("ES_INDEX_BATCH_YOY", "weather_batch_yoy")
+BATCH_PROVINCE_CUTOFF_DATE = date_cls.fromisoformat(os.getenv("BATCH_PROVINCE_CUTOFF_DATE", "2025-07-01"))
+PRE_MERGE_VIEW = "pre_merge_63"
+POST_MERGE_VIEW = "post_merge_34"
 
 BATCH_LOCATION_MERGES = {
     "Hà Giang": "Tuyên Quang",
@@ -74,17 +77,72 @@ def build_location_query(location: Optional[str]) -> Dict[str, Any]:
     return {"term": {"Location.keyword": location}}
 
 
-def normalize_batch_location(location: Optional[str]) -> Optional[str]:
+def normalize_location_name(location: Optional[str]) -> Optional[str]:
     if not location:
         return location
     normalized = re.sub(r",\s*(VN|Việt Nam)\s*$", "", location).strip()
     normalized = re.sub(r"^(Tỉnh|Thành phố)\s+", "", normalized).strip()
     normalized = re.sub(r"\s+", " ", normalized)
+    return normalized
+
+
+def normalize_batch_location(location: Optional[str], province_view: Optional[str] = POST_MERGE_VIEW) -> Optional[str]:
+    normalized = normalize_location_name(location)
+    if not normalized:
+        return normalized
+    if province_view == PRE_MERGE_VIEW:
+        return normalized
     return BATCH_LOCATION_MERGES.get(normalized, normalized)
 
 
-def build_batch_location_query(location: Optional[str]) -> Dict[str, Any]:
-    return build_location_query(normalize_batch_location(location))
+def normalize_province_view(province_view: Optional[str]) -> Optional[str]:
+    if province_view in (PRE_MERGE_VIEW, POST_MERGE_VIEW):
+        return province_view
+    return None
+
+
+def infer_province_view(start_date: Optional[date_cls], end_date: Optional[date_cls]) -> Optional[str]:
+    if end_date and end_date < BATCH_PROVINCE_CUTOFF_DATE:
+        return PRE_MERGE_VIEW
+    if start_date and start_date >= BATCH_PROVINCE_CUTOFF_DATE:
+        return POST_MERGE_VIEW
+    return None
+
+
+def build_batch_filters(
+    location: Optional[str] = None,
+    province_view: Optional[str] = None,
+    start_date: Optional[date_cls] = None,
+    end_date: Optional[date_cls] = None,
+) -> List[Dict[str, Any]]:
+    filters: List[Dict[str, Any]] = []
+    selected_view = normalize_province_view(province_view) or infer_province_view(start_date, end_date)
+    if selected_view:
+        filters.append({"term": {"province_view.keyword": selected_view}})
+
+    if location:
+        filters.append({"term": {"Location.keyword": normalize_batch_location(location, selected_view)}})
+
+    if start_date or end_date:
+        date_range: Dict[str, str] = {}
+        if start_date:
+            date_range["gte"] = start_date.isoformat()
+        if end_date:
+            date_range["lte"] = end_date.isoformat()
+        filters.append({"range": {"date": date_range}})
+    return filters
+
+
+def build_batch_query(
+    location: Optional[str] = None,
+    province_view: Optional[str] = None,
+    start_date: Optional[date_cls] = None,
+    end_date: Optional[date_cls] = None,
+) -> Dict[str, Any]:
+    filters = build_batch_filters(location, province_view, start_date, end_date)
+    if not filters:
+        return {"match_all": {}}
+    return {"bool": {"filter": filters}}
 
 
 @router.get("/health")
@@ -162,10 +220,11 @@ def get_batch_yoy(
         None,
         description="Địa điểm; alias realtime hoặc tên tỉnh cũ sẽ được chuẩn hóa sang 34 tỉnh/thành mới.",
     ),
+    province_view: Optional[str] = Query(None, description="pre_merge_63 hoặc post_merge_34"),
     limit: int = Query(50, ge=1, le=500, description="Số bản ghi so sánh cùng kỳ tối đa cần trả về"),
 ) -> List[Dict[str, Any]]:
     es = get_es_client()
-    query = build_batch_location_query(location)
+    query = build_batch_query(location, province_view)
 
     try:
         resp = es.search(
@@ -208,16 +267,48 @@ def list_locations(limit: int = Query(20, ge=1, le=100)) -> List[str]:
     return [b["key"] for b in buckets]
 
 
+@router.get("/weather/batch/locations")
+def list_batch_locations(
+    province_view: str = Query(POST_MERGE_VIEW, description="pre_merge_63 hoặc post_merge_34"),
+    limit: int = Query(100, ge=1, le=200),
+) -> List[str]:
+    es = get_es_client()
+    view = normalize_province_view(province_view) or POST_MERGE_VIEW
+    try:
+        resp = es.search(
+            index=ES_INDEX_BATCH_DAILY,
+            body={
+                "size": 0,
+                "query": {"term": {"province_view.keyword": view}},
+                "aggs": {
+                    "locations": {
+                        "terms": {
+                            "field": "Location.keyword",
+                            "size": limit,
+                            "order": {"_key": "asc"},
+                        }
+                    }
+                },
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+
+    buckets = resp.get("aggregations", {}).get("locations", {}).get("buckets", [])
+    return [b["key"] for b in buckets]
+
+
 @router.get("/weather/batch/daily")
 def get_batch_daily(
     location: Optional[str] = Query(
         None,
         description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ lấy tất cả dữ liệu batch.",
     ),
+    province_view: Optional[str] = Query(None, description="pre_merge_63 hoặc post_merge_34"),
     limit: int = Query(50, ge=1, le=500, description="Số bản ghi batch tối đa cần trả về"),
 ) -> List[Dict[str, Any]]:
     es = get_es_client()
-    query = build_batch_location_query(location)
+    query = build_batch_query(location, province_view)
 
     try:
         resp = es.search(
@@ -241,10 +332,11 @@ def get_batch_humidity(
         None,
         description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ lấy dữ liệu độ ẩm batch cho tất cả địa điểm.",
     ),
+    province_view: Optional[str] = Query(None, description="pre_merge_63 hoặc post_merge_34"),
     limit: int = Query(50, ge=1, le=500, description="Số bản ghi độ ẩm tối đa cần trả về"),
 ) -> List[Dict[str, Any]]:
     es = get_es_client()
-    query = build_batch_location_query(location)
+    query = build_batch_query(location, province_view)
 
     try:
         resp = es.search(
@@ -268,11 +360,12 @@ def get_batch_humidity_summary(
     location: Optional[str] = Query(
         None,
         description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ tính tổng hợp độ ẩm cho tất cả địa điểm.",
-    )
+    ),
+    province_view: Optional[str] = Query(None, description="pre_merge_63 hoặc post_merge_34"),
 ) -> Dict[str, Any]:
     es = get_es_client()
-    normalized_location = normalize_batch_location(location)
-    query = build_batch_location_query(location)
+    normalized_location = normalize_batch_location(location, normalize_province_view(province_view))
+    query = build_batch_query(location, province_view)
 
     try:
         resp = es.search(
@@ -305,10 +398,11 @@ def get_batch_precipitation(
         None,
         description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ lấy dữ liệu lượng mưa batch cho tất cả địa điểm.",
     ),
+    province_view: Optional[str] = Query(None, description="pre_merge_63 hoặc post_merge_34"),
     limit: int = Query(50, ge=1, le=500, description="Số bản ghi lượng mưa tối đa cần trả về"),
 ) -> List[Dict[str, Any]]:
     es = get_es_client()
-    query = build_batch_location_query(location)
+    query = build_batch_query(location, province_view)
 
     try:
         resp = es.search(
@@ -332,11 +426,12 @@ def get_batch_precipitation_summary(
     location: Optional[str] = Query(
         None,
         description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ tính tổng hợp lượng mưa cho tất cả địa điểm.",
-    )
+    ),
+    province_view: Optional[str] = Query(None, description="pre_merge_63 hoặc post_merge_34"),
 ) -> Dict[str, Any]:
     es = get_es_client()
-    normalized_location = normalize_batch_location(location)
-    query = build_batch_location_query(location)
+    normalized_location = normalize_batch_location(location, normalize_province_view(province_view))
+    query = build_batch_query(location, province_view)
 
     try:
         resp = es.search(
@@ -368,11 +463,13 @@ def get_batch_summary(
     location: Optional[str] = Query(
         None,
         description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'. Nếu bỏ trống sẽ lấy tổng hợp batch cho tất cả địa điểm.",
-    )
+    ),
+    province_view: Optional[str] = Query(None, description="pre_merge_63 hoặc post_merge_34"),
 ) -> Dict[str, Any]:
     es = get_es_client()
-    normalized_location = normalize_batch_location(location)
-    query = build_batch_location_query(location)
+    view = normalize_province_view(province_view)
+    normalized_location = normalize_batch_location(location, view)
+    query = build_batch_query(location, province_view)
 
     try:
         resp = es.search(
@@ -388,7 +485,7 @@ def get_batch_summary(
     hits = resp.get("hits", {}).get("hits", [])
     if not hits:
         if normalized_location:
-            fallback = build_batch_summary_from_daily(es, normalized_location)
+            fallback = build_batch_summary_from_daily(es, normalized_location, view)
             if fallback:
                 return fallback
         raise HTTPException(status_code=404, detail="Không tìm thấy dữ liệu batch cho location này")
@@ -406,9 +503,13 @@ def _r(v):
         return v
 
 
-def build_batch_summary_from_daily(es: Elasticsearch, location: str) -> Optional[Dict[str, Any]]:
+def build_batch_summary_from_daily(
+    es: Elasticsearch,
+    location: str,
+    province_view: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     """Fallback when weather_batch_stats is empty: derive summary from daily aggregates."""
-    daily_query = {"term": {"Location.keyword": location}}
+    daily_query = build_batch_query(location, province_view)
 
     try:
         hottest_resp = es.search(
@@ -524,22 +625,15 @@ def get_chart_data(
     days: int = Query(30, ge=1, le=365, description="Số ngày dùng khi không truyền date range"),
     start_date: Optional[date_cls] = Query(None, description="Ngày bắt đầu, định dạng YYYY-MM-DD"),
     end_date: Optional[date_cls] = Query(None, description="Ngày kết thúc, định dạng YYYY-MM-DD"),
+    province_view: Optional[str] = Query(None, description="pre_merge_63 hoặc post_merge_34"),
 ) -> Dict[str, Any]:
     """Lấy dữ liệu biểu đồ hoàn toàn từ batch daily (temp, humidity, precip)."""
     es = get_es_client()
 
-    batch_loc = normalize_batch_location(location)
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=400, detail="start_date phải nhỏ hơn hoặc bằng end_date")
 
-    filters: List[Dict[str, Any]] = [{"term": {"Location.keyword": batch_loc}}]
-    if start_date or end_date:
-        date_range: Dict[str, str] = {}
-        if start_date:
-            date_range["gte"] = start_date.isoformat()
-        if end_date:
-            date_range["lte"] = end_date.isoformat()
-        filters.append({"range": {"date": date_range}})
+    filters = build_batch_filters(location, province_view, start_date, end_date)
 
     size = 1000 if start_date or end_date else days
 
@@ -549,7 +643,7 @@ def get_chart_data(
             index=ES_INDEX_BATCH_DAILY,
             body={
                 "size": size,
-                "query": {"bool": {"filter": filters}},
+                "query": {"bool": {"filter": filters}} if filters else {"match_all": {}},
                 "sort": [{"date": {"order": "desc"}}],
             },
         )
@@ -574,6 +668,7 @@ def get_chart_data(
 
     return {
         "location": location,
+        "province_view": normalize_province_view(province_view) or infer_province_view(start_date, end_date),
         "days": days,
         "start_date": start_date.isoformat() if start_date else None,
         "end_date": end_date.isoformat() if end_date else None,
