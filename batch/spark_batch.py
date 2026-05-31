@@ -20,6 +20,7 @@ from pyspark.sql.functions import (
     lit,
     max,
     min,
+    month,
     regexp_replace,
     row_number,
     sum as spark_sum,
@@ -28,6 +29,7 @@ from pyspark.sql.functions import (
     trim,
     udf,
     when,
+    year,
 )
 from pyspark.sql.types import DoubleType, StringType, StructField, StructType
 from pyspark.sql.window import Window
@@ -286,6 +288,74 @@ logging.basicConfig(
 logger = logging.getLogger("spark_batch")
 
 
+def run_pivot_unpivot_analysis(daily_df: DataFrame) -> DataFrame:
+    """
+    Thực hiện PIVOT nhiệt độ trung bình các tỉnh theo tháng (Month_1 -> Month_12)
+    và UNPIVOT (Stack) quay lại dạng dòng.
+    """
+    logger.info("========== Bắt đầu phân tích Pivot & Unpivot ==========")
+    
+    # 1. Trích xuất năm và tháng từ cột date
+    df_with_time = daily_df.withColumn("year_num", year(col("date"))).withColumn("month_num", month(col("date")))
+    
+    # 2. PIVOT: Xoay tháng thành 12 cột (Month_1 đến Month_12)
+    pivoted_df = df_with_time.groupBy("Location", "year_num").pivot("month_num", range(1, 13)).avg("avg_temp")
+    
+    # Đổi tên các cột tháng cho rõ ràng
+    for m in range(1, 13):
+        pivoted_df = pivoted_df.withColumnRenamed(str(m), f"Month_{m}")
+        
+    logger.info("✓ Hoàn thành Pivot: Tính nhiệt độ trung bình các tỉnh theo 12 tháng.")
+    if LOG_BATCH_COUNTS:
+        pivoted_df.show(5, truncate=False)
+        
+    # 3. UNPIVOT: Sử dụng stack xoay 12 cột tháng về dạng dòng
+    stack_expr = ", ".join([f"'Month_{m}', Month_{m}" for m in range(1, 13)])
+    unpivoted_df = pivoted_df.selectExpr(
+        "Location", 
+        "year_num", 
+        f"stack(12, {stack_expr}) as (Month, avg_temp)"
+    ).filter(col("avg_temp").isNotNull())
+    
+    logger.info("✓ Hoàn thành Unpivot (Stack): Chuyển các cột tháng trở lại dạng dòng.")
+    if LOG_BATCH_COUNTS:
+        unpivoted_df.show(5, truncate=False)
+        
+    return unpivoted_df
+
+
+def write_parquet_to_minio(df: DataFrame, table_name: str, partition_cols: list = None, bucket_col: str = None, num_buckets: int = 5) -> None:
+    """
+    Ghi dữ liệu ra MinIO Parquet với các lựa chọn phân vùng (Partitioning) và phân cụm (Bucketing)
+    để tối ưu hóa hiệu năng truy vấn cho từng loại dữ liệu.
+    """
+    base_path = f"s3a://{MINIO_BUCKET}/processed/{table_name}"
+    logger.info("========== Ghi bảng '%s' lên MinIO tại: %s ==========", table_name, base_path)
+    
+    writer = df.write.format("parquet").mode("overwrite")
+    
+    if partition_cols:
+        writer = writer.partitionBy(*partition_cols)
+        
+    if bucket_col:
+        writer = writer.bucketBy(num_buckets, bucket_col).sortBy(bucket_col)
+        
+    try:
+        if bucket_col:
+            writer.option("path", base_path).saveAsTable(table_name)
+        else:
+            writer.save(base_path)
+        logger.info("✓ Đã ghi bảng '%s' lên MinIO thành công.", table_name)
+    except Exception as e:
+        logger.warning("Không thể lưu dạng Spark Table cho '%s': %s", table_name, e)
+        logger.info("→ Đang ghi fallback: Chỉ sử dụng Partitioning thông thường...")
+        fallback_writer = df.write.format("parquet").mode("overwrite")
+        if partition_cols:
+            fallback_writer = fallback_writer.partitionBy(*partition_cols)
+        fallback_writer.save(base_path)
+        logger.info("✓ Đã ghi fallback bảng '%s' lên MinIO thành công.", table_name)
+
+
 def main():
     logger.info("========== Khởi động Batch Job: Kéo dữ liệu từ MinIO ==========")
     logger.info("MinIO endpoint  : %s", MINIO_ENDPOINT)
@@ -307,6 +377,7 @@ def main():
             "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
         )
         .config("spark.sql.session.timeZone", "Asia/Ho_Chi_Minh")
+        .config("spark.sql.catalogImplementation", "in-memory")
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
@@ -377,7 +448,7 @@ def main():
     write_to_elasticsearch(daily_df, ES_INDEX_DAILY)
     logger.info("Đã ghi daily data vào ES index '%s'.", ES_INDEX_DAILY)
 
-    yoy_df = build_yoy_comparison(daily_df)
+    yoy_df = build_yoy_comparison(daily_df).persist(StorageLevel.MEMORY_AND_DISK)
     yoy_count = yoy_df.count()
     logger.info("Batch YoY rows: %d", yoy_count)
     write_to_elasticsearch(yoy_df, ES_INDEX_YOY)
@@ -390,7 +461,7 @@ def main():
     window_loc = Window.partitionBy(*summary_group).orderBy("date")
     daily_ordered = daily_df.withColumn("prev_date", lag("date").over(window_loc))
     daily_ordered = daily_ordered.withColumn(
-        "heat_day", when(col("avg_temp") >= HEATWAVE_THRESHOLD, lit(1)).otherwise(lit(0))
+        "heat_day", when(col("max_temp") >= HEATWAVE_THRESHOLD, lit(1)).otherwise(lit(0))
     )
     daily_ordered = daily_ordered.withColumn(
         "heat_group",
@@ -462,6 +533,38 @@ def main():
     logger.info("Batch summary rows: %d", summary_count)
     write_to_elasticsearch(summary_df, ES_INDEX_STATS)
     logger.info("Đã ghi summary/stats data vào ES index '%s'.", ES_INDEX_STATS)
+
+    # 1. Ghi dữ liệu đã làm sạch và mapping (Giai đoạn 1)
+    valid_df_to_write = valid_df.withColumn("year", year(col("Local_Time")))
+    write_parquet_to_minio(valid_df_to_write, "valid_weather", partition_cols=["year"], bucket_col="Location")
+
+    # 2. Ghi dữ liệu tổng hợp hàng ngày (Giai đoạn 2)
+    daily_df_to_write = daily_df.withColumn("year", year(col("date")))
+    write_parquet_to_minio(daily_df_to_write, "daily_weather", partition_cols=["year"], bucket_col="Location")
+
+    # 3. Ghi dữ liệu so sánh YoY (Giai đoạn 3)
+    yoy_df_to_write = yoy_df.withColumn("year", year(col("date")))
+    write_parquet_to_minio(yoy_df_to_write, "yoy_weather", partition_cols=["year"], bucket_col="Location")
+
+    # 4. Ghi dữ liệu thống kê cực trị & chuỗi ngày nắng nóng (Giai đoạn 3)
+    write_parquet_to_minio(summary_df, "stats_weather")
+
+    # 5. Thực hiện phân tích Pivot & Unpivot và ghi kết quả (Giai đoạn 3)
+    unpivoted_df = run_pivot_unpivot_analysis(daily_df).persist(StorageLevel.MEMORY_AND_DISK)
+    write_to_elasticsearch(unpivoted_df, "weather_batch_unpivoted")
+    logger.info("Đã ghi dữ liệu unpivot vào ES index 'weather_batch_unpivoted'.")
+    
+    # Ghi dữ liệu unpivot lên MinIO
+    unpivoted_df_to_write = unpivoted_df.withColumnRenamed("year_num", "year")
+    write_parquet_to_minio(unpivoted_df_to_write, "unpivoted_weather", partition_cols=["year"], bucket_col="Location")
+
+    # 6. Minh họa việc đọc dữ liệu với Partition Pruning từ MinIO
+    logger.info("--- Minh họa đọc dữ liệu áp dụng Partition Pruning ---")
+    minio_output_path = f"s3a://{MINIO_BUCKET}/processed/daily_weather"
+    read_back_df = spark.read.parquet(minio_output_path)
+    pruned_df = read_back_df.filter(col("year") == 2026)
+    logger.info("Số dòng dữ liệu năm 2026 (sau khi Partition Pruning): %d", pruned_df.count())
+
     logger.info("========== Batch Job hoàn thành ==========")
 
 

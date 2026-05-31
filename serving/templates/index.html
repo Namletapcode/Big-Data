@@ -2,7 +2,7 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <title>Weather Intelligence</title>
+    <title>Weather Forecast</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
@@ -11,19 +11,18 @@
     <div class="app">
       <header class="app-header">
         <span class="eyebrow">Big Data Weather Platform</span>
-        <h1>Weather Intelligence</h1>
-        <p>Theo dõi thời tiết realtime, dự báo nhiều ngày và lịch sử khí hậu từ Spark + Elasticsearch.</p>
+        <h1>Weather Forecast</h1>
       </header>
 
       <nav class="feature-nav" role="tablist" aria-label="Chọn tính năng">
-        <button class="feature-btn" id="tab-current" role="tab" data-target="section-current" aria-controls="section-current" aria-selected="false">
+        <button class="feature-btn active" id="tab-current" role="tab" data-target="section-current" aria-controls="section-current" aria-selected="true">
           Thời tiết hiện tại
         </button>
         <button class="feature-btn" id="tab-forecast" role="tab" data-target="forecast-section" aria-controls="forecast-section" aria-selected="false">
           Dự báo thời tiết
         </button>
         <button class="feature-btn" id="tab-batch" role="tab" data-target="batch-summary-section" aria-controls="batch-summary-section" aria-selected="false">
-          Thống kê Batch
+          Thống kê
         </button>
         <button class="feature-btn" id="tab-chart" role="tab" data-target="history-section" aria-controls="history-section" aria-selected="false">
           Dữ liệu lịch sử
@@ -108,7 +107,7 @@
         <section id="forecast-section" class="card forecast-section section-panel hidden" role="tabpanel" aria-labelledby="tab-forecast">
           <div class="forecast-hero">
             <div>
-              <span class="forecast-kicker">Dự báo từ luồng streaming</span>
+              <span class="forecast-kicker">Dự báo thời tiết</span>
               <h2 id="forecast-location">Dự báo thời tiết</h2>
             </div>
             <div class="forecast-now">
@@ -136,7 +135,7 @@
 
         <!-- Batch Summary Section -->
         <section id="batch-summary-section" class="card section-panel hidden" role="tabpanel" aria-labelledby="tab-batch">
-          <h2>Báo cáo Thống kê Toàn thời gian (Batch Data)</h2>
+          <h2>Thống kê thời tiết</h2>
           <div class="form-row">
             <label for="batch-period">Giai đoạn tỉnh</label>
             <select id="batch-period">
@@ -181,10 +180,11 @@
         <!-- Chart Section -->
         <section id="history-section" class="card chart-section section-panel hidden" role="tabpanel" aria-labelledby="tab-chart">
           <div class="chart-header">
-            <div>
-              <span class="section-kicker">Historical Weather</span>
-              <h2 class="chart-title">Lịch sử thời tiết theo khoảng ngày</h2>
-            </div>
+            <span class="section-kicker">Historical Weather</span>
+            <h2 class="chart-title">Lịch sử thời tiết theo khoảng ngày</h2>
+          </div>
+
+          <div class="date-range-container">
             <div class="date-range-panel">
               <div class="date-field">
                 <label for="chart-period">Giai đoạn tỉnh</label>
@@ -211,34 +211,25 @@
             </div>
           </div>
 
-          <div class="quick-range-row" aria-label="Chọn nhanh khoảng thời gian">
-            <button class="range-btn" data-days="7">7 ngày</button>
-            <button class="range-btn active" data-days="30">1 tháng</button>
-            <button class="range-btn" data-days="90">3 tháng</button>
-            <button class="range-btn" data-days="365">1 năm</button>
-          </div>
-
-          <div class="chart-meta-row">
-            <div>
-              <span class="meta-label">Khoảng dữ liệu</span>
-              <span id="selected-range-label" class="meta-value">--</span>
+          <div class="chart-controls-row">
+            <div class="metric-tabs">
+              <button class="metric-tab active" data-metric="temp">
+                <span class="tab-icon">🌡️</span><span class="tab-label">Nhiệt độ</span>
+              </button>
+              <button class="metric-tab" data-metric="precip">
+                <span class="tab-icon">🌧️</span><span class="tab-label">Lượng mưa</span>
+              </button>
+              <button class="metric-tab" data-metric="humidity">
+                <span class="tab-icon">💧</span><span class="tab-label">Độ ẩm</span>
+              </button>
             </div>
-            <div>
-              <span class="meta-label">Nguồn</span>
-              <span class="meta-value">Batch daily index</span>
-            </div>
-          </div>
 
-          <div class="metric-tabs">
-            <button class="metric-tab active" data-metric="temp">
-              <span class="tab-icon">🌡️</span><span class="tab-label">Nhiệt độ</span>
-            </button>
-            <button class="metric-tab" data-metric="precip">
-              <span class="tab-icon">🌧️</span><span class="tab-label">Lượng mưa</span>
-            </button>
-            <button class="metric-tab" data-metric="humidity">
-              <span class="tab-icon">💧</span><span class="tab-label">Độ ẩm</span>
-            </button>
+            <div class="quick-range-row" aria-label="Chọn nhanh khoảng thời gian">
+              <button class="range-btn" data-days="7">7 ngày</button>
+              <button class="range-btn active" data-days="30">1 tháng</button>
+              <button class="range-btn" data-days="90">3 tháng</button>
+              <button class="range-btn" data-days="365">1 năm</button>
+            </div>
           </div>
 
           <div id="chart-status" class="status"></div>
@@ -263,10 +254,6 @@
           </div>
         </section>
       </main>
-
-      <footer class="app-footer">
-        <span>Big Data project - Lambda Architecture · Speed + Batch + Serving layer</span>
-      </footer>
     </div>
 
     <script>
@@ -708,9 +695,9 @@
         temp: {
           label: "Nhiệt độ (°C)",
           fields: ["avg_temp", "min_temp", "max_temp"],
-          colors: ["#f97316", "rgba(56,189,248,0.6)", "rgba(239,68,68,0.6)"],
+          colors: ["#9ca3af", "rgba(56,189,248,0.6)", "rgba(239,68,68,0.6)"],
           labels: ["Trung bình", "Thấp nhất", "Cao nhất"],
-          fills: [true, false, false],
+          fills: [false, false, false],
           unit: "°C",
           valueKey: "avg_temp",
         },
@@ -756,7 +743,10 @@
       function updateSelectedRangeLabel() {
         const start = $("start-date").value;
         const end = $("end-date").value;
-        $("selected-range-label").textContent = start && end ? `${start} đến ${end}` : "Chọn khoảng ngày";
+        const el = $("selected-range-label");
+        if (el) {
+          el.textContent = start && end ? `${start} đến ${end}` : "Chọn khoảng ngày";
+        }
       }
 
       function clearQuickRangeSelection() {
@@ -976,13 +966,11 @@
         $("batch-period").value = PRE_MERGE_VIEW;
         $("chart-period").value = PRE_MERGE_VIEW;
         setChartRangeForPeriod(PRE_MERGE_VIEW);
+        activateFeature("section-current");
         Promise.all([
           loadBatchLocations(PRE_MERGE_VIEW, "batch-location"),
           loadBatchLocations(PRE_MERGE_VIEW, "chart-location"),
-        ]).then(() => {
-          const active = document.querySelector(".feature-btn.active");
-          if (active) FEATURE_FETCH[active.dataset.target]?.();
-        });
+        ]);
       });
     </script>
   </body>

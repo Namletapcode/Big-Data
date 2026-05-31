@@ -674,3 +674,39 @@ def get_chart_data(
         "end_date": end_date.isoformat() if end_date else None,
         "data": sorted_data,
     }
+
+
+@router.get("/weather/batch/unpivoted")
+def get_batch_unpivoted(
+    location: Optional[str] = Query(
+        None,
+        description="Địa điểm cần lấy dữ liệu unpivoted.",
+    ),
+    limit: int = Query(100, ge=1, le=1000, description="Số bản ghi tối đa trả về"),
+) -> List[Dict[str, Any]]:
+    """Lấy dữ liệu unpivoted (Month, avg_temp) của các địa phương từ Elasticsearch."""
+    es = get_es_client()
+    filters = []
+    if location:
+        filters.append({"term": {"Location.keyword": normalize_location_name(location)}})
+        
+    query = {"bool": {"filter": filters}} if filters else {"match_all": {}}
+    
+    try:
+        resp = es.search(
+            index="weather_batch_unpivoted",
+            body={
+                "size": limit,
+                "query": query,
+                "sort": [
+                    {"year_num": {"order": "desc"}}, 
+                    {"Month.keyword": {"order": "asc"}}
+                ],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
+        
+    hits = resp.get("hits", {}).get("hits", [])
+    return [h.get("_source", {}) for h in hits]
+
