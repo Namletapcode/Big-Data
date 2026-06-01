@@ -205,6 +205,7 @@ services:
 
   airflow-dag-processor:
     image: apache/airflow:3.2.1-python3.10
+    user: "50000:0"
     container_name: airflow_dag_processor
     restart: always
     networks: [bigdata-net]
