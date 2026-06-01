@@ -139,12 +139,6 @@ services:
     ports:
       - "8000:8000"
 
-  crawler-builder:
-    build: ../crawler
-    image: crawler_image:latest
-    networks: [bigdata-net]
-    profiles: ["donotrun"]
-
   airflow-db:
     image: postgres:13-alpine
     container_name: airflow_db
@@ -174,8 +168,8 @@ services:
     env_file:
       - ./airflow.env
     volumes:
-      - ../airflow/dags:/opt/airflow/dags
-      - ../airflow/logs:/opt/airflow/logs
+      - ../airflow/docker/dags:/opt/airflow/dags
+      - ../airflow/docker/logs:/opt/airflow/logs
     ports:
       - "8080:8080"
     command: api-server
@@ -193,8 +187,8 @@ services:
     env_file:
       - ./airflow.env
     volumes:
-      - ../airflow/dags:/opt/airflow/dags
-      - ../airflow/logs:/opt/airflow/logs
+      - ../airflow/docker/dags:/opt/airflow/dags
+      - ../airflow/docker/logs:/opt/airflow/logs
       - ../crawler:/opt/airflow/crawler
       - /var/run/docker.sock:/var/run/docker.sock
     command: scheduler
@@ -212,8 +206,8 @@ services:
     env_file:
       - ./airflow.env
     volumes:
-      - ../airflow/dags:/opt/airflow/dags
-      - ../airflow/logs:/opt/airflow/logs
+      - ../airflow/docker/dags:/opt/airflow/dags
+      - ../airflow/docker/logs:/opt/airflow/logs
       - ../crawler:/opt/airflow/crawler
       - /var/run/docker.sock:/var/run/docker.sock
     command: dag-processor
@@ -232,8 +226,8 @@ services:
     env_file:
       - ./airflow.env
     volumes:
-      - ../airflow/dags:/opt/airflow/dags
-      - ../airflow/logs:/opt/airflow/logs
+      - ../airflow/docker/dags:/opt/airflow/dags
+      - ../airflow/docker/logs:/opt/airflow/logs
       - ../crawler:/opt/airflow/crawler
       - /var/run/docker.sock:/var/run/docker.sock
     command: triggerer

@@ -1,5 +1,5 @@
 from airflow import DAG
-from airflow.providers.docker.operators.docker import DockerOperator
+from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.standard.operators.bash import BashOperator
 from pendulum import datetime
 
@@ -21,28 +21,28 @@ with DAG(
     template_searchpath=['/opt/airflow']
 ) as dag:
     
-    weather_crawler_task = DockerOperator(
-        task_id='weather_crawler_task',
-        image='crawler_image:latest',
-        command='python3 -u weather_crawler/weather_crawler.py',
-        network_mode='bigdata-net',
-        auto_remove='force',
-        docker_url='unix://var/run/docker.sock',
-        env_file='crawler/.env',
-        dns=['8.8.8.8', '8.8.4.4'],
-        mount_tmp_dir=False
+    weather_crawler_task = KubernetesPodOperator(
+        name='weather_crawler_task',
+        namespace='default',
+        image='crawler_image:1.0.0',
+        in_cluster=True,
+        cmds=['python3'],
+        arguments=['-u', 'weather_crawler/weather_crawler.py'],
+        is_delete_operator_pod=True,
+        get_logs=True,
+        image_pull_policy='Never'
     )
 
-    pollution_crawler_task = DockerOperator(
-        task_id='pollution_crawler_task',
-        image='crawler_image:latest',
-        command='python3 -u pollution_crawler/pollution_crawler.py',
-        network_mode='bigdata-net',
-        auto_remove='force',
-        docker_url='unix://var/run/docker.sock',
-        env_file='crawler/.env',
-        dns=['8.8.8.8', '8.8.4.4'],
-        mount_tmp_dir=False
+    pollution_crawler_task = KubernetesPodOperator(
+        name='weather_crawler_task',
+        namespace='default',
+        image='crawler_image:1.0.0',
+        in_cluster=True,
+        cmds=['python3'],
+        arguments=['-u', 'pollution_crawler/pollution_crawler.py'],
+        is_delete_operator_pod=True,
+        get_logs=True,
+        image_pull_policy='Never'
     )
 
     [weather_crawler_task, pollution_crawler_task]
