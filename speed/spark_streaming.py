@@ -16,9 +16,11 @@ ES_HOST = os.getenv("ES_HOST", "elasticsearch")
 ES_INDEX_REALTIME = "weather_realtime"
 ES_INDEX_AGG = "weather_aggregated_6h"
 ES_INDEX_FORECAST = "weather_forecast"
-CHECKPOINT_REALTIME = "/tmp/spark_checkpoints/weather_realtime"
-CHECKPOINT_AGG = "/tmp/spark_checkpoints/weather_agg_6h"
-CHECKPOINT_FORECAST = "/tmp/spark_checkpoints/weather_forecast"
+CHECKPOINT_DIR = os.getenv("SPARK_CHECKPOINT_DIR", "/app/spark_checkpoints")
+CHECKPOINT_REALTIME = f"{CHECKPOINT_DIR}/weather_realtime"
+CHECKPOINT_AGG = f"{CHECKPOINT_DIR}/weather_agg_6h"
+CHECKPOINT_FORECAST = f"{CHECKPOINT_DIR}/weather_forecast"
+
 
 # Hàm ghi tĩnh cho luồng Real-time
 def write_realtime_to_es(batch_df, batch_id):
