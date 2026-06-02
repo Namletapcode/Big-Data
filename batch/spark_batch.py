@@ -16,6 +16,7 @@ from pyspark.sql.functions import (
     date_format,
     datediff,
     explode,
+    expr,
     lag,
     lit,
     max,
@@ -27,7 +28,6 @@ from pyspark.sql.functions import (
     to_date,
     to_timestamp,
     trim,
-    udf,
     when,
     year,
 )
@@ -56,12 +56,6 @@ DEFAULT_PROVINCE_MAPPING_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "province_mapping_63_to_34.json"
 )
 
-DAILY_HEAT_SCHEMA = StructType(
-    [
-        StructField("temp_category", StringType(), False),
-        StructField("heat_alert_level", StringType(), False),
-    ]
-)
 RAW_WEATHER_SCHEMA = StructType(
     [
         StructField("address", StringType(), True),
@@ -114,7 +108,122 @@ def classify_daily_heat(avg_temp, max_temp, avg_humidity):
     return temp_category, alert
 
 
-classify_daily_heat_udf = udf(classify_daily_heat, DAILY_HEAT_SCHEMA)
+def add_daily_heat_classification(daily_df: DataFrame) -> DataFrame:
+    temp_category = (
+        when(col("avg_temp").isNull(), lit("unknown"))
+        .when(col("avg_temp") >= 40, lit("cực kỳ nóng"))
+        .when(col("avg_temp") >= 35, lit("rất nóng"))
+        .when(col("avg_temp") >= 30, lit("nóng"))
+        .when(col("avg_temp") >= 25, lit("ấm"))
+        .otherwise(lit("mát"))
+    )
+
+    heat_alert_level = (
+        when(col("avg_temp").isNull() | col("max_temp").isNull(), lit("unknown"))
+        .when(
+            (col("max_temp") >= 40)
+            | ((col("avg_temp") >= 35) & (col("avg_humidity") >= 70)),
+            lit("extreme"),
+        )
+        .when((col("max_temp") >= 35) | (col("avg_temp") >= 30), lit("high"))
+        .when((col("avg_temp") >= 27) & (col("avg_humidity") >= 70), lit("caution"))
+        .otherwise(lit("normal"))
+    )
+
+    rain_alert_level = (
+        when(col("total_precip").isNull() | (col("total_precip") <= 0), lit("normal"))
+        .when(col("total_precip") >= 50, lit("extreme"))
+        .when(col("total_precip") >= 10, lit("high"))
+        .otherwise(lit("caution"))
+    )
+
+    classified_df = (
+        daily_df.withColumn("temp_category", temp_category)
+        .withColumn("heat_alert_level", heat_alert_level)
+        .withColumn("rain_alert_level", rain_alert_level)
+        .withColumn(
+            "heat_alert_priority",
+            when(col("heat_alert_level") == "extreme", lit(3))
+            .when(col("heat_alert_level") == "high", lit(2))
+            .when(col("heat_alert_level") == "caution", lit(1))
+            .when(col("heat_alert_level") == "normal", lit(0))
+            .otherwise(lit(-1)),
+        )
+        .withColumn(
+            "rain_alert_priority",
+            when(col("rain_alert_level") == "extreme", lit(3))
+            .when(col("rain_alert_level") == "high", lit(2))
+            .when(col("rain_alert_level") == "caution", lit(1))
+            .otherwise(lit(0)),
+        )
+        .withColumn(
+            "is_heat_alert",
+            col("heat_alert_level").isin("caution", "high", "extreme"),
+        )
+        .withColumn(
+            "is_rain_alert",
+            col("rain_alert_level").isin("caution", "high", "extreme"),
+        )
+        .withColumn(
+            "weather_alert_tags",
+            expr(
+                """
+                filter(
+                    array(
+                        CASE WHEN is_heat_alert THEN 'Chú ý nắng nóng' END,
+                        CASE WHEN is_rain_alert THEN 'Có mưa' END
+                    ),
+                    x -> x is not null
+                )
+                """
+            ),
+        )
+    )
+    return (
+        classified_df.withColumn(
+            "alert_priority",
+            when(col("heat_alert_priority") >= col("rain_alert_priority"), col("heat_alert_priority")).otherwise(
+                col("rain_alert_priority")
+            ),
+        )
+        .withColumn("alert_type", when(col("heat_alert_priority") >= col("rain_alert_priority"), lit("heat")).otherwise(lit("rain")))
+        .withColumn("alert_level", when(col("alert_type") == "heat", col("heat_alert_level")).otherwise(col("rain_alert_level")))
+        .withColumn("is_weather_alert", col("alert_priority") > 0)
+        .withColumn(
+            "alert_reason",
+            when(
+                col("alert_type") == "heat",
+                when(col("heat_alert_level") == "unknown", lit("missing_temperature_data"))
+                .when(col("max_temp") >= 40, lit("max_temp_over_40"))
+                .when((col("avg_temp") >= 35) & (col("avg_humidity") >= 70), lit("avg_temp_high_with_humidity"))
+                .when(col("max_temp") >= 35, lit("max_temp_over_35"))
+                .when(col("avg_temp") >= 30, lit("avg_temp_over_30"))
+                .when((col("avg_temp") >= 27) & (col("avg_humidity") >= 70), lit("hot_and_humid"))
+                .otherwise(lit("normal")),
+            ).otherwise(
+                when(col("total_precip") >= 50, lit("heavy_rain_over_50mm"))
+                .when(col("total_precip") >= 10, lit("rain_over_10mm"))
+                .when(col("total_precip") > 0, lit("rain_expected"))
+                .otherwise(lit("normal"))
+            ),
+        )
+        .withColumn(
+            "alert_title",
+            when(
+                col("alert_type") == "heat",
+                when(col("heat_alert_level") == "extreme", lit("Cảnh báo nắng nóng nguy hiểm"))
+                .when(col("heat_alert_level") == "high", lit("Cảnh báo nắng nóng"))
+                .when(col("heat_alert_level") == "caution", lit("Chú ý thời tiết nóng ẩm"))
+                .when(col("heat_alert_level") == "normal", lit("Thời tiết bình thường"))
+                .otherwise(lit("Thiếu dữ liệu cảnh báo")),
+            ).otherwise(
+                when(col("rain_alert_level") == "extreme", lit("Cảnh báo mưa lớn"))
+                .when(col("rain_alert_level") == "high", lit("Chú ý có mưa"))
+                .when(col("rain_alert_level") == "caution", lit("Chú ý có mưa"))
+                .otherwise(lit("Thời tiết bình thường"))
+            ),
+        )
+    )
 
 
 def normalize_location_column(location_col):
@@ -204,14 +313,7 @@ def build_daily_aggregates(valid_df: DataFrame) -> DataFrame:
         avg("humidity").alias("avg_humidity"),
         spark_sum("precip").alias("total_precip"),
     )
-    classified_df = daily_df.withColumn(
-        "_heat", classify_daily_heat_udf(col("avg_temp"), col("max_temp"), col("avg_humidity"))
-    )
-    return (
-        classified_df.withColumn("temp_category", col("_heat.temp_category"))
-        .withColumn("heat_alert_level", col("_heat.heat_alert_level"))
-        .drop("_heat")
-    )
+    return add_daily_heat_classification(daily_df)
 
 
 def build_yoy_comparison(daily_df: DataFrame) -> DataFrame:

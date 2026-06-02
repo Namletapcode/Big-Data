@@ -370,6 +370,57 @@ button:hover {
   font-size: 0.9rem;
 }
 
+.forecast-alert {
+  display: flex;
+  align-items: center;
+  margin: 0 0 1rem;
+  padding: 0.8rem 0.95rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(251, 191, 36, 0.36);
+  background: rgba(120, 53, 15, 0.34);
+}
+
+.forecast-alert.hidden {
+  display: none;
+}
+
+.forecast-alert strong,
+.forecast-alert span {
+  display: block;
+}
+
+.forecast-alert strong {
+  color: #fff7ed;
+  font-size: 0.92rem;
+}
+
+.forecast-alert span {
+  margin-top: 0.18rem;
+  color: rgba(255, 247, 237, 0.82);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.forecast-alert-caution {
+  border-color: rgba(250, 204, 21, 0.42);
+  background: rgba(113, 63, 18, 0.32);
+}
+
+.forecast-alert-high {
+  border-color: rgba(251, 146, 60, 0.5);
+  background: rgba(154, 52, 18, 0.36);
+}
+
+.forecast-alert-extreme {
+  border-color: rgba(248, 113, 113, 0.56);
+  background: rgba(127, 29, 29, 0.48);
+}
+
+.forecast-alert-rain {
+  border-color: rgba(56, 189, 248, 0.48);
+  background: rgba(12, 74, 110, 0.42);
+}
+
 .forecast-panel {
   margin-top: 0.85rem;
   padding: 0.85rem;
@@ -450,9 +501,72 @@ button:hover {
   border-bottom: 0;
 }
 
+.day-row-alert {
+  margin: 0 -0.35rem;
+  padding: 0 0.35rem;
+  border-radius: 0.65rem;
+}
+
+.day-row-alert-caution {
+  background: rgba(113, 63, 18, 0.16);
+}
+
+.day-row-alert-high {
+  background: rgba(154, 52, 18, 0.18);
+}
+
+.day-row-alert-extreme {
+  background: rgba(127, 29, 29, 0.28);
+}
+
+.day-row-alert-rain {
+  background: rgba(12, 74, 110, 0.24);
+}
+
 .day-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.22rem;
+  min-width: 0;
   font-size: 0.95rem;
   font-weight: 560;
+}
+
+.heat-alert-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0.12rem 0.38rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.heat-alert-caution {
+  color: #fef3c7;
+  background: rgba(202, 138, 4, 0.28);
+  border: 1px solid rgba(250, 204, 21, 0.34);
+}
+
+.heat-alert-high {
+  color: #ffedd5;
+  background: rgba(234, 88, 12, 0.28);
+  border: 1px solid rgba(251, 146, 60, 0.38);
+}
+
+.heat-alert-extreme {
+  color: #fee2e2;
+  background: rgba(220, 38, 38, 0.34);
+  border: 1px solid rgba(248, 113, 113, 0.44);
+}
+
+.heat-alert-rain {
+  color: #e0f2fe;
+  background: rgba(2, 132, 199, 0.3);
+  border: 1px solid rgba(56, 189, 248, 0.44);
 }
 
 .day-icon {
@@ -584,6 +698,26 @@ button:hover {
 .detail-highlight-row strong {
   color: #f8fafc;
   font-size: 0.92rem;
+}
+
+.day-detail-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  margin-bottom: 0.85rem;
+  padding: 0.62rem 0.7rem;
+  border-radius: 0.72rem;
+}
+
+.day-detail-alert strong {
+  color: #fff7ed;
+  font-size: 0.82rem;
+}
+
+.day-detail-alert span {
+  color: rgba(255, 247, 237, 0.82);
+  font-size: 0.76rem;
+  line-height: 1.4;
 }
 
 .day-detail-scroll {
@@ -1048,6 +1182,12 @@ button:hover {
 
   .day-rain {
     font-size: 0.7rem;
+  }
+
+  .heat-alert-badge {
+    max-width: 58px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .day-icon-trigger {

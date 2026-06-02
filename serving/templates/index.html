@@ -115,6 +115,7 @@
               <span id="forecast-now-range"></span>
             </div>
           </div>
+          <div id="forecast-alert" class="forecast-alert hidden"></div>
 
           <div class="forecast-panel">
             <div class="forecast-panel-title">
@@ -377,6 +378,64 @@
         return date.toLocaleDateString("vi-VN", { weekday: "short" });
       }
 
+      function alertClass(level) {
+        return ["caution", "high", "extreme"].includes(level) ? level : "normal";
+      }
+
+      function alertVisualClass(alert) {
+        if (alert && alert.alert_type === "rain") return "rain";
+        if (alert && alert.type === "rain") return "rain";
+        return alertClass(alert && (alert.alert_level || alert.heat_alert_level));
+      }
+
+      function renderAlertBadge(day) {
+        if (!day || !(day.is_weather_alert || day.is_heat_alert)) return "";
+        const tags = Array.isArray(day.weather_alert_tags) && day.weather_alert_tags.length
+          ? day.weather_alert_tags
+          : [{
+              type: day.alert_type || "heat",
+              level: day.alert_level || day.heat_alert_level,
+              label: day.alert_type === "rain"
+                ? "Có mưa"
+                : ({
+                    caution: "Chú ý nắng nóng",
+                    high: "Nắng nóng",
+                    extreme: "Nắng nóng nguy hiểm",
+                  }[day.alert_level || day.heat_alert_level] || "Cảnh báo"),
+            }];
+
+        return tags.map((tag) => {
+          const normalizedTag = typeof tag === "string" ? { label: tag, type: tag.toLowerCase().includes("mưa") ? "rain" : "heat" } : tag;
+          const level = normalizedTag.level || (normalizedTag.type === "rain" ? "caution" : day.heat_alert_level);
+          const label = normalizedTag.label || (normalizedTag.type === "rain" ? "Có mưa" : "Chú ý nắng nóng");
+          return `<span class="heat-alert-badge heat-alert-${alertVisualClass({ ...normalizedTag, alert_level: level })}">${escapeHtml(label)}</span>`;
+        }).join("");
+      }
+
+      function renderForecastAlertBanner(days, alerts) {
+        const banner = $("forecast-alert");
+        const alert = (Array.isArray(alerts) && alerts.length ? alerts : days.filter((day) => day.is_weather_alert || day.is_heat_alert))
+          .slice()
+          .sort((a, b) => (Number(b.alert_priority) || 0) - (Number(a.alert_priority) || 0))[0];
+
+        if (!alert) {
+          banner.className = "forecast-alert hidden";
+          banner.innerHTML = "";
+          return;
+        }
+
+        const dateText = alert.date || alert.datetime || "ngày gần nhất";
+        const title = alert.alert_title || "Cảnh báo thời tiết";
+        const message = alert.alert_message || "Có khả năng xuất hiện thời tiết cần chú ý trong dự báo.";
+        banner.className = `forecast-alert forecast-alert-${alertVisualClass(alert)}`;
+        banner.innerHTML = `
+          <div>
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(dateText)} · ${escapeHtml(message)}</span>
+          </div>
+        `;
+      }
+
       function escapeHtml(value) {
         return String(value)
           .replaceAll("&", "&amp;")
@@ -569,6 +628,12 @@
               <span>Thấp nhất <strong>${escapeHtml(fmtDetailValue("tempmin", day.tempmin))}</strong></span>
               <span>Khả năng mưa <strong>${escapeHtml(fmtDetailValue("precipprob", day.precipprob))}</strong></span>
             </div>
+            ${(day.is_weather_alert || day.is_heat_alert) ? `
+              <div class="day-detail-alert heat-alert-${alertVisualClass(day)}">
+                <strong>${escapeHtml(day.alert_title || "Cảnh báo thời tiết")}</strong>
+                <span>${escapeHtml(day.alert_message || "")}</span>
+              </div>
+            ` : ""}
             <div class="day-detail-scroll">
               <div class="detail-groups">
                 ${DAY_DETAIL_GROUPS.map((group) => renderDetailGroup(day, group)).join("")}
@@ -618,6 +683,7 @@
         $("forecast-now-temp").textContent = fmtTemp(d.Temp_C);
         $("forecast-now-range").textContent = `${fmtTemp(days[0].tempmax)} / ${fmtTemp(days[0].tempmin)}`;
         $("hourly-subtitle").textContent = days[0].conditions || "";
+        renderForecastAlertBanner(days, d.Weather_Alerts || d.Heat_Alerts);
 
         const hourly = pickHourlyForecast(days, d.Local_Time);
         $("hourly-forecast").innerHTML = hourly.map((h, idx) => `
@@ -645,8 +711,8 @@
           const width = Number.isFinite(high) && Number.isFinite(low) ? Math.max(8, ((high - low) / span) * 100) : 20;
 
           return `
-            <div class="day-row">
-              <span class="day-name">${fmtDay(day.datetime, idx)}</span>
+            <div class="day-row ${(day.is_weather_alert || day.is_heat_alert) ? `day-row-alert day-row-alert-${alertVisualClass(day)}` : ""}">
+              <span class="day-name">${fmtDay(day.datetime, idx)}${renderAlertBadge(day)}</span>
               <span class="day-detail-anchor">
                 <button class="day-icon day-icon-trigger" type="button" data-day-detail="${idx}" aria-expanded="false" aria-controls="day-detail-${idx}" aria-label="Xem chi tiết dự báo ngày ${escapeHtml(day.datetime || "")}">${weatherIcon(day.icon)}</button>
                 ${renderDayDetailTable(day, idx)}

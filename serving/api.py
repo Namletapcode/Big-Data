@@ -101,6 +101,262 @@ def normalize_province_view(province_view: Optional[str]) -> Optional[str]:
     return None
 
 
+def _to_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def classify_weather_alert(
+    avg_temp: Any,
+    max_temp: Any,
+    avg_humidity: Any,
+    precip: Any = None,
+    precipprob: Any = None,
+) -> Dict[str, Any]:
+    avg_temp_f = _to_float(avg_temp)
+    max_temp_f = _to_float(max_temp)
+    avg_humidity_f = _to_float(avg_humidity)
+    precip_f = _to_float(precip)
+    precipprob_f = _to_float(precipprob)
+
+    if avg_temp_f is None:
+        temp_category = "unknown"
+    elif avg_temp_f >= 40:
+        temp_category = "cực kỳ nóng"
+    elif avg_temp_f >= 35:
+        temp_category = "rất nóng"
+    elif avg_temp_f >= 30:
+        temp_category = "nóng"
+    elif avg_temp_f >= 25:
+        temp_category = "ấm"
+    else:
+        temp_category = "mát"
+
+    if avg_temp_f is None or max_temp_f is None:
+        heat_alert_level = "unknown"
+    elif max_temp_f >= 40:
+        heat_alert_level = "extreme"
+    elif avg_temp_f >= 35 and avg_humidity_f is not None and avg_humidity_f >= 70:
+        heat_alert_level = "extreme"
+    elif max_temp_f >= 35:
+        heat_alert_level = "high"
+    elif avg_temp_f >= 30:
+        heat_alert_level = "high"
+    elif avg_temp_f >= 27 and avg_humidity_f is not None and avg_humidity_f >= 70:
+        heat_alert_level = "caution"
+    else:
+        heat_alert_level = "normal"
+
+    if avg_temp_f is None or max_temp_f is None:
+        heat_reason = "missing_temperature_data"
+        heat_priority = -1
+        heat_title = "Thiếu dữ liệu cảnh báo"
+    elif max_temp_f >= 40:
+        heat_reason = "max_temp_over_40"
+        heat_priority = 3
+        heat_title = "Cảnh báo nắng nóng nguy hiểm"
+    elif avg_temp_f >= 35 and avg_humidity_f is not None and avg_humidity_f >= 70:
+        heat_reason = "avg_temp_high_with_humidity"
+        heat_priority = 3
+        heat_title = "Cảnh báo nắng nóng nguy hiểm"
+    elif max_temp_f >= 35:
+        heat_reason = "max_temp_over_35"
+        heat_priority = 2
+        heat_title = "Cảnh báo nắng nóng"
+    elif avg_temp_f >= 30:
+        heat_reason = "avg_temp_over_30"
+        heat_priority = 2
+        heat_title = "Cảnh báo nắng nóng"
+    elif avg_temp_f >= 27 and avg_humidity_f is not None and avg_humidity_f >= 70:
+        heat_reason = "hot_and_humid"
+        heat_priority = 1
+        heat_title = "Chú ý thời tiết nóng ẩm"
+    else:
+        heat_reason = "normal"
+        heat_priority = 0
+        heat_title = "Thời tiết bình thường"
+
+    has_rain = (precip_f is not None and precip_f > 0) or (precipprob_f is not None and precipprob_f >= 50)
+    if not has_rain:
+        rain_alert_level = "normal"
+        rain_reason = "normal"
+        rain_priority = 0
+        rain_title = "Thời tiết bình thường"
+    elif (precip_f is not None and precip_f >= 50) or (precipprob_f is not None and precipprob_f >= 95):
+        rain_alert_level = "extreme"
+        rain_reason = "heavy_rain_over_50mm"
+        rain_priority = 3
+        rain_title = "Cảnh báo mưa lớn"
+    elif (precip_f is not None and precip_f >= 10) or (precipprob_f is not None and precipprob_f >= 80):
+        rain_alert_level = "high"
+        rain_reason = "rain_over_10mm"
+        rain_priority = 2
+        rain_title = "Chú ý có mưa"
+    else:
+        rain_alert_level = "caution"
+        rain_reason = "rain_expected"
+        rain_priority = 1
+        rain_title = "Chú ý có mưa"
+
+    if heat_priority >= rain_priority:
+        alert_type = "heat"
+        alert_level = heat_alert_level
+        alert_priority = heat_priority
+        alert_reason = heat_reason
+        alert_title = heat_title
+    else:
+        alert_type = "rain"
+        alert_level = rain_alert_level
+        alert_priority = rain_priority
+        alert_reason = rain_reason
+        alert_title = rain_title
+
+    weather_alert_tags = []
+    if heat_alert_level in ("caution", "high", "extreme"):
+        weather_alert_tags.append(
+            {
+                "type": "heat",
+                "level": heat_alert_level,
+                "label": "Chú ý nắng nóng" if heat_alert_level == "caution" else "Nắng nóng",
+                "priority": heat_priority,
+                "reason": heat_reason,
+            }
+        )
+    if rain_alert_level in ("caution", "high", "extreme"):
+        weather_alert_tags.append(
+            {
+                "type": "rain",
+                "level": rain_alert_level,
+                "label": "Có mưa",
+                "priority": rain_priority,
+                "reason": rain_reason,
+            }
+        )
+
+    return {
+        "temp_category": temp_category,
+        "heat_alert_level": heat_alert_level,
+        "rain_alert_level": rain_alert_level,
+        "alert_type": alert_type,
+        "alert_level": alert_level,
+        "alert_priority": alert_priority,
+        "is_heat_alert": heat_alert_level in ("caution", "high", "extreme"),
+        "is_rain_alert": rain_alert_level in ("caution", "high", "extreme"),
+        "is_weather_alert": alert_priority > 0,
+        "weather_alert_tags": weather_alert_tags,
+        "alert_reason": alert_reason,
+        "alert_title": alert_title,
+    }
+
+
+def build_weather_alert_message(day: Dict[str, Any]) -> str:
+    max_temp = _to_float(day.get("tempmax") if day.get("tempmax") is not None else day.get("max_temp"))
+    avg_temp = _to_float(day.get("temp") if day.get("temp") is not None else day.get("avg_temp"))
+    humidity = _to_float(day.get("humidity") if day.get("humidity") is not None else day.get("avg_humidity"))
+    precip = _to_float(day.get("precip") if day.get("precip") is not None else day.get("total_precip"))
+    precipprob = _to_float(day.get("precipprob"))
+
+    if day.get("alert_type") == "rain":
+        parts = []
+        if precip is not None:
+            parts.append(f"lượng mưa khoảng {precip:.1f} mm")
+        if precipprob is not None:
+            parts.append(f"xác suất mưa {precipprob:.0f}%")
+        detail = ", ".join(parts) if parts else "có khả năng xuất hiện mưa"
+        if day.get("alert_level") == "extreme":
+            return f"{detail}. Cần chú ý mưa lớn và hạn chế di chuyển khi thời tiết xấu."
+        return f"{detail}. Nên chuẩn bị áo mưa hoặc ô khi ra ngoài."
+
+    parts = []
+    if max_temp is not None:
+        parts.append(f"nhiệt độ cao nhất khoảng {max_temp:.1f}°C")
+    if avg_temp is not None:
+        parts.append(f"trung bình {avg_temp:.1f}°C")
+    if humidity is not None:
+        parts.append(f"độ ẩm {humidity:.0f}%")
+    detail = ", ".join(parts) if parts else "dữ liệu nhiệt độ chưa đầy đủ"
+
+    level = day.get("alert_level") or day.get("heat_alert_level")
+    if level == "extreme":
+        return f"{detail}. Hạn chế hoạt động ngoài trời vào khung giờ nắng gắt."
+    if level == "high":
+        return f"{detail}. Nên chuẩn bị chống nắng và bổ sung nước."
+    if level == "caution":
+        return f"{detail}. Theo dõi cảm giác oi nóng khi hoạt động ngoài trời."
+    return detail
+
+
+def enrich_forecast_alerts(document: Dict[str, Any]) -> Dict[str, Any]:
+    days = document.get("Forecast_15_Days")
+    if not isinstance(days, list):
+        document["Weather_Alerts"] = []
+        document["Heat_Alerts"] = []
+        return document
+
+    weather_alerts = []
+    heat_alerts = []
+    for day in days:
+        if not isinstance(day, dict):
+            continue
+        alert = classify_weather_alert(
+            day.get("temp"),
+            day.get("tempmax"),
+            day.get("humidity"),
+            day.get("precip"),
+            day.get("precipprob"),
+        )
+        day.update(alert)
+        day["alert_message"] = build_weather_alert_message(day)
+        if day.get("is_weather_alert"):
+            weather_alerts.append(
+                {
+                    "date": day.get("datetime"),
+                    "alert_type": day.get("alert_type"),
+                    "alert_level": day.get("alert_level"),
+                    "heat_alert_level": day.get("heat_alert_level"),
+                    "rain_alert_level": day.get("rain_alert_level"),
+                    "alert_priority": day.get("alert_priority"),
+                    "alert_title": day.get("alert_title"),
+                    "alert_reason": day.get("alert_reason"),
+                    "alert_message": day.get("alert_message"),
+                    "weather_alert_tags": day.get("weather_alert_tags", []),
+                    "max_temp": day.get("tempmax"),
+                    "avg_temp": day.get("temp"),
+                    "avg_humidity": day.get("humidity"),
+                    "precip": day.get("precip"),
+                    "precipprob": day.get("precipprob"),
+                }
+            )
+        if day.get("is_heat_alert"):
+            heat_alerts.append(
+                {
+                    "date": day.get("datetime"),
+                    "heat_alert_level": day.get("heat_alert_level"),
+                    "alert_priority": day.get("alert_priority"),
+                    "alert_title": day.get("alert_title"),
+                    "alert_reason": day.get("alert_reason"),
+                    "alert_message": day.get("alert_message"),
+                    "max_temp": day.get("tempmax"),
+                    "avg_temp": day.get("temp"),
+                    "avg_humidity": day.get("humidity"),
+                }
+            )
+
+    document["Heat_Alerts"] = sorted(
+        heat_alerts,
+        key=lambda item: (-(item.get("alert_priority") or 0), item.get("date") or ""),
+    )
+    document["Weather_Alerts"] = sorted(
+        weather_alerts,
+        key=lambda item: (-(item.get("alert_priority") or 0), item.get("date") or ""),
+    )
+    return document
+
+
 def infer_province_view(start_date: Optional[date_cls], end_date: Optional[date_cls]) -> Optional[str]:
     if end_date and end_date < BATCH_PROVINCE_CUTOFF_DATE:
         return PRE_MERGE_VIEW
@@ -187,7 +443,7 @@ def get_latest_weather(
     if not hits:
         raise HTTPException(status_code=404, detail="Không tìm thấy dữ liệu cho location này")
 
-    return hits[0]["_source"]
+    return enrich_forecast_alerts(hits[0]["_source"])
 
 
 @router.get("/weather/history")
@@ -709,4 +965,3 @@ def get_batch_unpivoted(
         
     hits = resp.get("hits", {}).get("hits", [])
     return [h.get("_source", {}) for h in hits]
-

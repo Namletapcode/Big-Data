@@ -15,6 +15,39 @@ class ElasticsearchStub:
 
 
 class BatchApiTest(unittest.TestCase):
+    def test_latest_enriches_forecast_heat_alerts(self):
+        document = {
+            "Location": "Hà Nội",
+            "Local_Time": "2026-06-02T12:00:00",
+            "Forecast_15_Days": [
+                {"datetime": "2026-06-02", "temp": 31.0, "tempmax": 34.0, "humidity": 60.0, "precip": 2.0},
+                {"datetime": "2026-06-03", "temp": 36.0, "tempmax": 39.0, "humidity": 72.0},
+                {"datetime": "2026-06-04", "temp": 24.0, "tempmax": 26.0, "humidity": 80.0, "precip": 2.0},
+            ],
+        }
+        es = ElasticsearchStub({"hits": {"hits": [{"_source": document}]}})
+        with patch.object(api, "get_es_client", return_value=es):
+            response = api.get_latest_weather(location="Hà Nội")
+
+        self.assertEqual(response["Forecast_15_Days"][0]["heat_alert_level"], "high")
+        self.assertEqual(response["Forecast_15_Days"][0]["alert_priority"], 2)
+        self.assertEqual(response["Forecast_15_Days"][0]["alert_reason"], "avg_temp_over_30")
+        self.assertTrue(response["Forecast_15_Days"][0]["is_heat_alert"])
+        self.assertTrue(response["Forecast_15_Days"][0]["is_rain_alert"])
+        self.assertEqual(
+            [tag["type"] for tag in response["Forecast_15_Days"][0]["weather_alert_tags"]],
+            ["heat", "rain"],
+        )
+        self.assertEqual(response["Forecast_15_Days"][1]["heat_alert_level"], "extreme")
+        self.assertEqual(response["Forecast_15_Days"][2]["alert_type"], "rain")
+        self.assertEqual(response["Forecast_15_Days"][2]["rain_alert_level"], "caution")
+        self.assertEqual(response["Forecast_15_Days"][2]["alert_title"], "Chú ý có mưa")
+        self.assertTrue(response["Forecast_15_Days"][2]["is_rain_alert"])
+        self.assertEqual(response["Heat_Alerts"][0]["date"], "2026-06-03")
+        self.assertEqual(response["Heat_Alerts"][0]["alert_priority"], 3)
+        self.assertEqual(response["Weather_Alerts"][0]["date"], "2026-06-03")
+        self.assertIn("2026-06-04", [alert["date"] for alert in response["Weather_Alerts"]])
+
     def test_normalize_batch_location_aliases(self):
         self.assertEqual(api.normalize_batch_location("Thành phố Hồ Chí Minh, VN"), "Hồ Chí Minh")
         self.assertEqual(api.normalize_batch_location("Thừa Thiên-Huế, Việt Nam"), "Huế")
