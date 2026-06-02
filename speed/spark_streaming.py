@@ -9,13 +9,16 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType, L
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "weather_data")
+KAFKA_FORECAST_TOPIC = os.getenv("KAFKA_FORECAST_TOPIC", "weather_forecast_data")
 ES_HOST = os.getenv("ES_HOST", "elasticsearch")
 
 # Cấu hình Index và Checkpoint độc lập cho 2 luồng
 ES_INDEX_REALTIME = "weather_realtime"
 ES_INDEX_AGG = "weather_aggregated_6h"
+ES_INDEX_FORECAST = "weather_forecast"
 CHECKPOINT_REALTIME = "/tmp/spark_checkpoints/weather_realtime"
 CHECKPOINT_AGG = "/tmp/spark_checkpoints/weather_agg_6h"
+CHECKPOINT_FORECAST = "/tmp/spark_checkpoints/weather_forecast"
 
 # Hàm ghi tĩnh cho luồng Real-time
 def write_realtime_to_es(batch_df, batch_id):
@@ -41,6 +44,20 @@ def write_agg_to_es(batch_df, batch_id):
         .option("es.nodes", ES_HOST) \
         .option("es.port", "9200") \
         .option("es.resource", ES_INDEX_AGG) \
+        .option("es.mapping.id", "es_id") \
+        .option("es.nodes.wan.only", "true") \
+        .save()
+
+# Hàm ghi tĩnh cho luồng Forecast
+def write_forecast_to_es(batch_df, batch_id):
+    if batch_df.isEmpty():
+        return
+    batch_df.write \
+        .format("org.elasticsearch.spark.sql") \
+        .mode("append") \
+        .option("es.nodes", ES_HOST) \
+        .option("es.port", "9200") \
+        .option("es.resource", ES_INDEX_FORECAST) \
         .option("es.mapping.id", "es_id") \
         .option("es.nodes.wan.only", "true") \
         .save()
@@ -175,6 +192,13 @@ def main():
         .option("startingOffsets", "earliest") \
         .load()
 
+    raw_forecast_stream = spark.readStream \
+        .format("kafka") \
+        .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP) \
+        .option("subscribe", KAFKA_FORECAST_TOPIC) \
+        .option("startingOffsets", "earliest") \
+        .load()
+
     parsed_stream = (
         raw_stream
         .selectExpr("CAST(value AS STRING) as json_string")
@@ -255,6 +279,35 @@ def main():
         .outputMode("update") \
         .foreachBatch(write_agg_to_es) \
         .option("checkpointLocation", CHECKPOINT_AGG) \
+        .trigger(processingTime="10 seconds") \
+        .start()
+
+    # ====================================================================
+    # LUỒNG 3: Ghi dự báo nhiều ngày từ topic weather_forecast_data
+    # ====================================================================
+    forecast_df = (
+        raw_forecast_stream
+        .selectExpr("CAST(value AS STRING) as json_string")
+        .select(from_json(col("json_string"), weather_schema).alias("data"))
+        .select(
+            coalesce(col("data.address"), col("data.resolvedAddress")).alias("Location"),
+            col("data.timezone").alias("Timezone"),
+            from_unixtime(
+                coalesce(
+                    col("data.currentConditions.datetimeEpoch"),
+                    col("data.days").getItem(0).getField("datetimeEpoch")
+                ),
+                "yyyy-MM-dd'T'HH:mm:ss"
+            ).alias("Forecast_Updated_At"),
+            col("data.days").alias("Forecast_15_Days")
+        )
+        .withColumn("es_id", col("Location"))
+    )
+
+    query_forecast = forecast_df.writeStream \
+        .outputMode("append") \
+        .foreachBatch(write_forecast_to_es) \
+        .option("checkpointLocation", CHECKPOINT_FORECAST) \
         .trigger(processingTime="10 seconds") \
         .start()
 

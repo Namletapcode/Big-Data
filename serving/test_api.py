@@ -11,6 +11,8 @@ class ElasticsearchStub:
 
     def search(self, **kwargs):
         self.calls.append(kwargs)
+        if isinstance(self.response, list):
+            return self.response[len(self.calls) - 1]
         return self.response
 
 
@@ -47,6 +49,34 @@ class BatchApiTest(unittest.TestCase):
         self.assertEqual(response["Heat_Alerts"][0]["alert_priority"], 3)
         self.assertEqual(response["Weather_Alerts"][0]["date"], "2026-06-03")
         self.assertIn("2026-06-04", [alert["date"] for alert in response["Weather_Alerts"]])
+
+    def test_latest_merges_longer_forecast_document(self):
+        realtime_doc = {
+            "Location": "Hà Nội",
+            "Local_Time": "2026-06-02T12:00:00",
+            "Forecast_15_Days": [{"datetime": "2026-06-02", "temp": 30.0}],
+        }
+        forecast_doc = {
+            "Location": "Hà Nội",
+            "Forecast_Updated_At": "2026-06-02T12:00:00",
+            "Forecast_15_Days": [
+                {"datetime": "2026-06-02", "temp": 30.0},
+                {"datetime": "2026-06-03", "temp": 31.0},
+                {"datetime": "2026-06-04", "temp": 32.0},
+            ],
+        }
+        es = ElasticsearchStub(
+            [
+                {"hits": {"hits": [{"_source": realtime_doc}]}},
+                {"hits": {"hits": [{"_source": forecast_doc}]}},
+            ]
+        )
+        with patch.object(api, "get_es_client", return_value=es):
+            response = api.get_latest_weather(location="Hà Nội")
+
+        self.assertEqual(len(response["Forecast_15_Days"]), 3)
+        self.assertEqual(response["Forecast_Source"], api.ES_INDEX_FORECAST)
+        self.assertEqual(es.calls[1]["index"], api.ES_INDEX_FORECAST)
 
     def test_normalize_batch_location_aliases(self):
         self.assertEqual(api.normalize_batch_location("Thành phố Hồ Chí Minh, VN"), "Hồ Chí Minh")

@@ -24,7 +24,7 @@ with DAG(
     
     clean_old_config_task = BashOperator(
         task_id='clean_old_config_task',
-        bash_command='rm -f /opt/airflow/crawler_state/weather_crawler_state.json'
+        bash_command='rm -f /opt/airflow/crawler_state/weather_crawler_state.json || true'
     )
 
     weather_crawler_task = DockerOperator(

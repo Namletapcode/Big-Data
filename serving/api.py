@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 ES_HOST = os.getenv("ES_HOST", "http://elasticsearch:9200")
 ES_INDEX = os.getenv("ES_INDEX", "weather_realtime")
+ES_INDEX_FORECAST = os.getenv("ES_INDEX_FORECAST", "weather_forecast")
 ES_INDEX_BATCH_DAILY = os.getenv("ES_INDEX_BATCH_DAILY", "weather_batch_daily")
 ES_INDEX_BATCH_STATS = os.getenv("ES_INDEX_BATCH_STATS", "weather_batch_stats")
 ES_INDEX_BATCH_YOY = os.getenv("ES_INDEX_BATCH_YOY", "weather_batch_yoy")
@@ -357,6 +358,41 @@ def enrich_forecast_alerts(document: Dict[str, Any]) -> Dict[str, Any]:
     return document
 
 
+def fetch_latest_forecast(es: Elasticsearch, location: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not location:
+        return None
+    try:
+        resp = es.search(
+            index=ES_INDEX_FORECAST,
+            body={
+                "size": 1,
+                "query": build_location_query(location),
+                "sort": [{"Forecast_Updated_At": {"order": "desc"}}],
+            },
+        )
+    except Exception:
+        return None
+
+    hits = resp.get("hits", {}).get("hits", [])
+    if not hits:
+        return None
+    source = hits[0].get("_source", {})
+    return source if isinstance(source, dict) else None
+
+
+def merge_forecast_document(realtime_doc: Dict[str, Any], forecast_doc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not forecast_doc:
+        return realtime_doc
+
+    realtime_days = realtime_doc.get("Forecast_15_Days")
+    forecast_days = forecast_doc.get("Forecast_15_Days")
+    if isinstance(forecast_days, list) and len(forecast_days) > len(realtime_days or []):
+        realtime_doc["Forecast_15_Days"] = forecast_days
+        realtime_doc["Forecast_Updated_At"] = forecast_doc.get("Forecast_Updated_At")
+        realtime_doc["Forecast_Source"] = ES_INDEX_FORECAST
+    return realtime_doc
+
+
 def infer_province_view(start_date: Optional[date_cls], end_date: Optional[date_cls]) -> Optional[str]:
     if end_date and end_date < BATCH_PROVINCE_CUTOFF_DATE:
         return PRE_MERGE_VIEW
@@ -443,7 +479,9 @@ def get_latest_weather(
     if not hits:
         raise HTTPException(status_code=404, detail="Không tìm thấy dữ liệu cho location này")
 
-    return enrich_forecast_alerts(hits[0]["_source"])
+    document = hits[0]["_source"]
+    forecast = fetch_latest_forecast(es, document.get("Location"))
+    return enrich_forecast_alerts(merge_forecast_document(document, forecast))
 
 
 @router.get("/weather/history")
