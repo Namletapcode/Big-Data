@@ -100,6 +100,12 @@
                 <span id="w-sunset" class="value"></span>
               </div>
             </div>
+
+            <!-- Dòng chữ bé hiển thị dữ liệu tổng hợp 6 tiếng dưới cùng -->
+            <div id="w-aggregated-container" class="aggregated-container">
+              <div class="agg-title">Dữ liệu tổng hợp 6 giờ gần nhất</div>
+              <div id="w-aggregated-list" class="agg-list"></div>
+            </div>
           </div>
         </section>
 
@@ -337,6 +343,54 @@
         $("w-sunrise").textContent = d.Sunrise || "N/A";
         $("w-sunset").textContent = d.Sunset || "N/A";
         renderForecast(d);
+        fetchAndRenderAggregated(d.Location);
+      }
+
+      function formatAggDate(val) {
+        if (!val) return "N/A";
+        const date = new Date(val);
+        if (Number.isNaN(date.getTime())) return String(val);
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        const hh = String(date.getHours()).padStart(2, '0');
+        const min = String(date.getMinutes()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+      }
+
+      async function fetchAndRenderAggregated(locationName) {
+        const listEl = $("w-aggregated-list");
+        if (!listEl) return;
+        try {
+          const params = new URLSearchParams({ location: locationName, limit: "1" });
+          const res = await fetch(`/api/weather/aggregated?${params}`);
+          if (!res.ok) throw new Error("Không tải được dữ liệu");
+          const data = await res.json();
+          if (!Array.isArray(data) || !data.length) {
+            listEl.innerHTML = '<div class="agg-empty">Chưa có dữ liệu tổng hợp 6h gần đây.</div>';
+            return;
+          }
+          listEl.innerHTML = data.map((item) => {
+            const startStr = formatAggDate(item.Window_Start);
+            const endStr = formatAggDate(item.Window_End);
+            
+            const tempStr = item.Avg_Temp_C != null ? `Nhiệt độ TB: ${item.Avg_Temp_C.toFixed(1)}°C` : "";
+            const humidityStr = item.Avg_Humidity != null ? `Độ ẩm TB: ${item.Avg_Humidity.toFixed(1)}%` : "";
+            const precipStr = item.Total_Precip_mm != null ? `Tổng mưa: ${item.Total_Precip_mm.toFixed(1)}mm` : "";
+            const windStr = item.Max_Wind_Speed != null ? `Gió tối đa: ${item.Max_Wind_Speed.toFixed(1)}km/h` : "";
+            
+            const metrics = [tempStr, humidityStr, precipStr, windStr].filter(Boolean).join(" | ");
+            
+            return `
+              <div class="agg-item">
+                <span class="agg-time">Từ ${startStr} đến ${endStr}</span>
+                <span class="agg-metrics">${metrics}</span>
+              </div>
+            `;
+          }).join("");
+        } catch (e) {
+          listEl.innerHTML = `<div class="agg-error">Lỗi tải dữ liệu tổng hợp: ${e.message}</div>`;
+        }
       }
 
       /* ---------- Forecast ---------- */

@@ -1270,3 +1270,57 @@ button:hover {
     gap: 1rem;
   }
 }
+
+/* ---------- Aggregated Weather Data at the bottom of Current Card ---------- */
+.aggregated-container {
+  margin-top: 1.15rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+
+.agg-title {
+  font-weight: 750;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.45rem;
+}
+
+.agg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.agg-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.1rem 0;
+}
+
+.agg-time {
+  font-weight: 600;
+  color: var(--cyan);
+}
+
+.agg-metrics {
+  color: var(--text-soft);
+}
+
+.agg-empty {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  padding: 0.2rem 0;
+}
+
+.agg-error {
+  color: var(--error);
+  font-size: 0.72rem;
+  padding: 0.2rem 0;
+}
+

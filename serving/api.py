@@ -484,6 +484,29 @@ def get_latest_weather(
     return enrich_forecast_alerts(merge_forecast_document(document, forecast))
 
 
+@router.get("/weather/aggregated")
+def get_aggregated_weather(
+    location: str = Query(..., description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'"),
+    limit: int = Query(5, ge=1, le=50, description="Số bản ghi tổng hợp tối đa cần trả về"),
+) -> List[Dict[str, Any]]:
+    es = get_es_client()
+    query = build_location_query(location)
+
+    try:
+        resp = es.search(
+            index="weather_aggregated_6h",
+            body={
+                "size": limit,
+                "query": query,
+                "sort": [{"Window_Start": {"order": "desc"}}],
+            },
+        )
+        hits = resp.get("hits", {}).get("hits", [])
+        return [h.get("_source", {}) for h in hits]
+    except Exception:
+        return []
+
+
 @router.get("/weather/history")
 def get_weather_history(
     location: str = Query(..., description="Địa điểm, ví dụ: 'Hà Nội, Việt Nam'"),
