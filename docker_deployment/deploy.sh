@@ -2,7 +2,7 @@
 
 cd ..
 cd crawler
-docker build -t crawler_image:1.0.0 .
+docker build -t crawler_image:1.1.0 .
 
 cd ..
 cd docker_deployment

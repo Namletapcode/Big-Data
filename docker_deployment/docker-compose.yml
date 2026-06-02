@@ -201,6 +201,7 @@ services:
       - ../airflow/docker/logs:/opt/airflow/logs
       - ../crawler:/opt/airflow/crawler
       - /var/run/docker.sock:/var/run/docker.sock
+      - crawler_state_vol:/opt/airflow/crawler_state
     command: scheduler
     mem_limit: 768m
     cpus: 0.6
@@ -248,3 +249,7 @@ services:
     command: triggerer
     mem_limit: 512m
     cpus: 0.4
+
+volumes:
+  crawler_state_vol:
+    name: crawler_state_vol

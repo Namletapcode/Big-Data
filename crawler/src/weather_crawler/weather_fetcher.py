@@ -7,7 +7,7 @@ import time
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATE_FILE = os.path.join(BASE_DIR, 'configs', 'weather_crawler_state.json')
+STATE_FILE = os.path.join(BASE_DIR, 'state', 'weather_crawler_state.json')
 sys.path.append(BASE_DIR)
 
 from utils import get_state, update_state
@@ -24,12 +24,15 @@ idx = get_state(STATE_FILE, 'key_idx')
 params = {
     'unitGroup': 'metric',
     'contentType': 'json',
-    'include': 'current'
 }
 
-def fetch_weather_data(lat, lon, max_iter=10, interval=0.5):
+def fetch_weather_data(lat, lon, type, max_iter=10, interval=0.5):
     global idx
-    url = f'{BASE_URL}/{lat},{lon}/today'
+
+    url_suffix = '/today' if type == 'current' else ''
+    url = f'{BASE_URL}/{lat},{lon}{url_suffix}'
+
+    params['include'] = type
 
     for _ in range(max_iter):
         try:
@@ -64,6 +67,13 @@ def fetch_weather_data(lat, lon, max_iter=10, interval=0.5):
 if __name__ == "__main__":
     lat = 21.0283334
     lon = 105.854041
-    weather_data = fetch_weather_data(lat, lon)
 
+    print('---DỮ LIỆU HIỆN TẠI---')
+    weather_data = fetch_weather_data(lat, lon, 'current')
+    print(json.dumps(weather_data, ensure_ascii=False, indent=2))
+
+    print()
+
+    print('---DỮ LIỆU DỰ ĐOÁN---')
+    weather_data = fetch_weather_data(lat, lon, 'fcst')
     print(json.dumps(weather_data, ensure_ascii=False, indent=2))
