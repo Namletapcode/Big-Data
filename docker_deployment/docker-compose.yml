@@ -186,9 +186,9 @@ services:
 
   airflow-scheduler:
     image: apache/airflow:3.2.1-python3.10
-    # user: "1001:0"
-    # group_add: 
-    #   - "109"
+    user: "1001:0"
+    group_add: 
+      - "109"
     container_name: airflow_scheduler
     restart: always
     networks: [bigdata-net]
@@ -207,9 +207,9 @@ services:
 
   airflow-dag-processor:
     image: apache/airflow:3.2.1-python3.10
-    # user: "1001:0"
-    # group_add: 
-    #   - "109"
+    user: "1001:0"
+    group_add: 
+      - "109"
     container_name: airflow_dag_processor
     restart: always
     networks: [bigdata-net]
@@ -229,9 +229,9 @@ services:
 
   airflow-triggerer:
     image: apache/airflow:3.2.1-python3.10
-    # user: "1001:0"
-    # group_add: 
-    #   - "109"
+    user: "1001:0"
+    group_add: 
+      - "109"
     container_name: airflow_triggerer
     restart: always
     networks: [bigdata-net]
