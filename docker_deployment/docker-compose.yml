@@ -120,6 +120,8 @@ services:
     restart: no 
     env_file:
       - ./minio.env
+    environment:
+      - ES_HOST=elasticsearch
 
   kafka_connect:
     build:
@@ -146,6 +148,10 @@ services:
     environment:
       - ES_HOST=http://elasticsearch:9200
       - ES_INDEX=weather_realtime
+      - MINIO_ENDPOINT=http://35.240.139.79:9000
+      - MINIO_BUCKET=raw-weather-data
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password123
     ports:
       - "8000:8000"
 

@@ -1111,6 +1111,92 @@ button:hover {
   color: var(--text);
 }
 
+/* ---------- Pivot & Unpivot Section ---------- */
+.pivot-section {
+  max-width: 1180px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(45, 212, 191, 0.18), transparent 30%),
+    radial-gradient(circle at 96% 12%, rgba(96, 165, 250, 0.18), transparent 28%),
+    var(--bg-card-strong);
+}
+
+.pivot-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(420px, 1.25fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.pivot-chart-panel,
+.pivot-table-panel {
+  min-width: 0;
+  padding: 0.85rem;
+  border-radius: 1.25rem;
+  background: rgba(2, 6, 23, 0.32);
+  border: 1px solid rgba(226, 232, 240, 0.14);
+}
+
+.pivot-chart-container {
+  position: relative;
+  height: 340px;
+  margin-top: 0.75rem;
+  border-radius: 1rem;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    rgba(5, 11, 25, 0.38);
+  background-size: 26px 26px, 26px 26px, auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.75rem;
+}
+
+.pivot-table-scroll {
+  margin-top: 0.75rem;
+  overflow-x: auto;
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.1);
+}
+
+.pivot-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.pivot-table th,
+.pivot-table td {
+  padding: 0.58rem 0.62rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.08);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pivot-table th:first-child,
+.pivot-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 132px;
+  text-align: left;
+  background: rgba(5, 11, 25, 0.96);
+}
+
+.pivot-table th {
+  color: #93c5fd;
+  background: rgba(3, 10, 25, 0.96);
+  font-weight: 700;
+}
+
+.pivot-table td {
+  color: rgba(226, 232, 240, 0.88);
+  font-variant-numeric: tabular-nums;
+}
+
+.pivot-table tbody tr:hover td {
+  background: rgba(96, 165, 250, 0.08);
+}
+
 /* ---------- Footer ---------- */
 .app-footer {
   padding: 0.8rem 1.25rem 1.2rem;
@@ -1268,6 +1354,14 @@ button:hover {
 
   .chart-summary {
     gap: 1rem;
+  }
+
+  .pivot-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .pivot-chart-container {
+    height: 260px;
   }
 }
 

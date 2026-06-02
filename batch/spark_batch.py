@@ -51,6 +51,8 @@ ES_HOST = os.getenv("ES_HOST", "elasticsearch")
 ES_INDEX_DAILY = "weather_batch_daily"
 ES_INDEX_STATS = "weather_batch_stats"
 ES_INDEX_YOY = "weather_batch_yoy"
+ES_INDEX_UNPIVOTED = "weather_batch_unpivoted"
+ES_INDEX_VALID_WEATHER = "weather_batch_valid_weather"
 HEATWAVE_THRESHOLD = 30.0
 DEFAULT_PROVINCE_MAPPING_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "province_mapping_63_to_34.json"
@@ -358,23 +360,38 @@ def build_yoy_comparison(daily_df: DataFrame) -> DataFrame:
     )
 
 
+def _es_nodes_host() -> str:
+    """Trả về hostname/IP sạch (không có scheme) để dùng với ES-Hadoop option es.nodes."""
+    host = ES_HOST
+    for prefix in ("https://", "http://"):
+        if host.startswith(prefix):
+            host = host[len(prefix):]
+            break
+    # Bỏ port nếu có (ES-Hadoop dùng es.port riêng)
+    host = host.split(":")[0]
+    return host
+
+
 def ensure_elasticsearch_index(index: str) -> None:
     es_url = ES_HOST if ES_HOST.startswith(("http://", "https://")) else f"http://{ES_HOST}:9200"
     client = Elasticsearch(es_url)
     if not client.indices.exists(index=index):
         client.indices.create(index=index)
+    # wait_for_status sử dụng đúng signature của Python ES client
     client.cluster.health(index=index, wait_for_status="yellow", timeout="30s")
 
 
 def write_to_elasticsearch(df: DataFrame, index: str) -> None:
     # ES-Hadoop can race automatic index creation on the first distributed write.
     ensure_elasticsearch_index(index)
+    es_nodes = _es_nodes_host()
     (
         df.write.format("org.elasticsearch.spark.sql")
         .mode("overwrite")
-        .option("es.nodes", ES_HOST)
+        .option("es.nodes", es_nodes)
         .option("es.port", "9200")
         .option("es.resource", index)
+        .option("es.nodes.wan.only", "true")
         .save()
     )
 
@@ -637,7 +654,16 @@ def main():
     logger.info("Đã ghi summary/stats data vào ES index '%s'.", ES_INDEX_STATS)
 
     # 1. Ghi dữ liệu đã làm sạch và mapping (Giai đoạn 1)
-    valid_df_to_write = valid_df.withColumn("year", year(col("Local_Time")))
+    valid_df_to_write = valid_df.withColumn("year", year(col("Local_Time"))).persist(StorageLevel.MEMORY_AND_DISK)
+
+    valid_weather_count = valid_df_to_write.count()
+    logger.info("Batch valid weather rows chuẩn bị ghi ES/MinIO: %d", valid_weather_count)
+
+    # ES-Hadoop không serialize TimestampType tốt → cast sang string trước khi ghi
+    valid_df_es = valid_df_to_write.withColumn("Local_Time", col("Local_Time").cast(StringType()))
+    write_to_elasticsearch(valid_df_es, ES_INDEX_VALID_WEATHER)
+    logger.info("Đã ghi valid weather data vào ES index '%s'.", ES_INDEX_VALID_WEATHER)
+
     write_parquet_to_minio(valid_df_to_write, "valid_weather", partition_cols=["year"], bucket_col="Location")
 
     # 2. Ghi dữ liệu tổng hợp hàng ngày (Giai đoạn 2)
@@ -653,9 +679,18 @@ def main():
 
     # 5. Thực hiện phân tích Pivot & Unpivot và ghi kết quả (Giai đoạn 3)
     unpivoted_df = run_pivot_unpivot_analysis(daily_df).persist(StorageLevel.MEMORY_AND_DISK)
-    write_to_elasticsearch(unpivoted_df, "weather_batch_unpivoted")
-    logger.info("Đã ghi dữ liệu unpivot vào ES index 'weather_batch_unpivoted'.")
-    
+    unpivoted_count = unpivoted_df.count()
+    logger.info("Batch unpivoted rows chuẩn bị ghi ES/MinIO: %d", unpivoted_count)
+
+    # Thêm cột month_num (số nguyên) từ label "Month_N" để API có thể sort đúng thứ tự tháng
+    from pyspark.sql.functions import regexp_extract
+    unpivoted_df_es = unpivoted_df.withColumn(
+        "month_num",
+        regexp_extract(col("Month"), r"(\d+)", 1).cast("integer"),
+    )
+    write_to_elasticsearch(unpivoted_df_es, ES_INDEX_UNPIVOTED)
+    logger.info("Đã ghi dữ liệu unpivot vào ES index '%s'.", ES_INDEX_UNPIVOTED)
+
     # Ghi dữ liệu unpivot lên MinIO
     unpivoted_df_to_write = unpivoted_df.withColumnRenamed("year_num", "year")
     write_parquet_to_minio(unpivoted_df_to_write, "unpivoted_weather", partition_cols=["year"], bucket_col="Location")

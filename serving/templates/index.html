@@ -27,6 +27,9 @@
         <button class="feature-btn" id="tab-chart" role="tab" data-target="history-section" aria-controls="history-section" aria-selected="false">
           Dữ liệu lịch sử
         </button>
+        <button class="feature-btn" id="tab-pivot" role="tab" data-target="pivot-section" aria-controls="pivot-section" aria-selected="false">
+          Pivot & Unpivot
+        </button>
       </nav>
 
       <main class="app-main">
@@ -260,6 +263,67 @@
             </div>
           </div>
         </section>
+
+        <!-- Pivot & Unpivot Section -->
+        <section id="pivot-section" class="card pivot-section section-panel hidden" role="tabpanel" aria-labelledby="tab-pivot">
+          <div class="chart-header">
+            <span class="section-kicker">Batch Analysis</span>
+            <h2 class="chart-title">Pivot & Unpivot nhiệt độ theo tháng</h2>
+          </div>
+
+          <div class="date-range-container">
+            <div class="date-range-panel">
+              <div class="date-field">
+                <label for="pivot-period">Giai đoạn tỉnh</label>
+                <select id="pivot-period">
+                  <option value="pre_merge_63">Trước / đến 30-06-2025 (63 tỉnh)</option>
+                  <option value="post_merge_34">Sau 30-06-2025 (34 tỉnh)</option>
+                </select>
+              </div>
+              <div class="date-field">
+                <label for="pivot-location">Tỉnh</label>
+                <select id="pivot-location">
+                  <option value="">Đang tải...</option>
+                </select>
+              </div>
+              <div class="date-field">
+                <label for="pivot-year">Năm</label>
+                <select id="pivot-year">
+                  <option value="">Năm mới nhất</option>
+                </select>
+              </div>
+              <button id="load-pivot-btn" class="secondary-btn">Xem dữ liệu</button>
+            </div>
+          </div>
+
+          <div id="pivot-status" class="status"></div>
+
+          <div class="pivot-layout">
+            <div class="pivot-chart-panel">
+              <div class="forecast-panel-title">
+                <span>Unpivot view</span>
+                <span id="pivot-chart-subtitle">Month / avg_temp</span>
+              </div>
+              <div class="pivot-chart-container">
+                <canvas id="pivotChart"></canvas>
+              </div>
+            </div>
+
+            <div class="pivot-table-panel">
+              <div class="forecast-panel-title">
+                <span>Pivot table</span>
+                <span>12 tháng</span>
+              </div>
+              <div class="pivot-table-scroll">
+                <table class="pivot-table">
+                  <thead id="pivot-table-head"></thead>
+                  <tbody id="pivot-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
       </main>
     </div>
 
@@ -843,7 +907,9 @@
       };
 
       let chartInstance = null;
+      let pivotChartInstance = null;
       let chartData = [];
+      let pivotData = [];
       let currentMetric = "temp";
       let currentDays = 30;
 
@@ -989,12 +1055,173 @@
         }
       }
 
+      /* ---------- Pivot & Unpivot ---------- */
+      const MONTH_LABELS = Array.from({ length: 12 }, (_, i) => `Month_${i + 1}`);
+
+      function monthNumber(monthLabel) {
+        const match = String(monthLabel || "").match(/(\d+)/);
+        return match ? Number(match[1]) : 0;
+      }
+
+      function groupPivotRows(rows) {
+        const grouped = new Map();
+        rows.forEach((row) => {
+          const year = row.year_num || row.year || "N/A";
+          const key = `${row.Location || "N/A"}|${year}`;
+          if (!grouped.has(key)) {
+            grouped.set(key, {
+              Location: row.Location || "N/A",
+              year_num: year,
+              months: {},
+            });
+          }
+          grouped.get(key).months[row.Month] = row.avg_temp;
+        });
+        return [...grouped.values()].sort((a, b) => Number(b.year_num) - Number(a.year_num));
+      }
+
+      async function populatePivotYears(location) {
+        const select = $("pivot-year");
+        select.innerHTML = '<option value="">Năm mới nhất</option>';
+        if (!location) return;
+        try {
+          const params = new URLSearchParams({
+            location,
+            province_view: $("pivot-period").value,
+            limit: "1000",
+          });
+          const res = await fetch(`/api/weather/batch/unpivoted?${params}`);
+          if (!res.ok) return;
+          const rows = await res.json();
+          const years = [...new Set(rows.map((row) => row.year_num).filter(Boolean))]
+            .sort((a, b) => Number(b) - Number(a));
+          select.innerHTML = '<option value="">Năm mới nhất</option>' + years
+            .map((year) => `<option value="${escapeHtml(year)}">${escapeHtml(year)}</option>`)
+            .join("");
+        } catch (e) {
+          select.innerHTML = '<option value="">Không có dữ liệu</option>';
+        }
+      }
+
+      async function fetchPivotData() {
+        const loc = $("pivot-location").value;
+        if (!loc) return;
+
+        $("pivot-status").textContent = "Đang tải dữ liệu pivot/unpivot...";
+        $("pivot-status").className = "status status-info";
+
+        try {
+          const params = new URLSearchParams({
+            location: loc,
+            province_view: $("pivot-period").value,
+            limit: "1000",
+          });
+          if ($("pivot-year").value) params.set("year", $("pivot-year").value);
+          const res = await fetch(`/api/weather/batch/unpivoted?${params}`);
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+          const rows = await res.json();
+          const grouped = groupPivotRows(rows);
+          const selected = grouped[0];
+          pivotData = selected
+            ? MONTH_LABELS.map((month) => ({
+                Month: month,
+                avg_temp: selected.months[month] ?? null,
+                Location: selected.Location,
+                year_num: selected.year_num,
+              }))
+            : [];
+          renderPivotView(grouped, selected);
+          $("pivot-status").textContent = selected
+            ? `Hiển thị dữ liệu ${selected.Location} năm ${selected.year_num}.`
+            : "Chưa có dữ liệu pivot/unpivot cho lựa chọn này.";
+          $("pivot-status").className = "status " + (selected ? "status-ok" : "status-warn");
+        } catch (e) {
+          $("pivot-status").textContent = "Lỗi: " + e.message;
+          $("pivot-status").className = "status status-error";
+          renderPivotView([], null);
+        }
+      }
+
+      function renderPivotView(groupedRows, selected) {
+        renderPivotChart(selected);
+        renderPivotTable(groupedRows);
+      }
+
+      function renderPivotChart(selected) {
+        if (pivotChartInstance) pivotChartInstance.destroy();
+        const ctx = $("pivotChart").getContext("2d");
+        $("pivot-chart-subtitle").textContent = selected
+          ? `${selected.Location} / ${selected.year_num}`
+          : "Month / avg_temp";
+
+        pivotChartInstance = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: MONTH_LABELS.map((month) => `T${monthNumber(month)}`),
+            datasets: [{
+              label: "Nhiệt độ trung bình",
+              data: pivotData.map((row) => row.avg_temp),
+              backgroundColor: "rgba(45, 212, 191, 0.58)",
+              borderColor: "rgba(125, 211, 252, 0.95)",
+              borderWidth: 1,
+              borderRadius: 6,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: "#9ca3af" } },
+              tooltip: {
+                backgroundColor: "rgba(15,23,42,0.95)",
+                titleColor: "#e5e7eb",
+                bodyColor: "#e5e7eb",
+                callbacks: {
+                  label: (ctx) => `Avg temp: ${ctx.parsed.y != null ? Number(ctx.parsed.y).toFixed(1) : "N/A"} °C`,
+                },
+              },
+            },
+            scales: {
+              x: { grid: { color: "rgba(148,163,184,0.08)" }, ticks: { color: "#9ca3af" } },
+              y: {
+                grid: { color: "rgba(148,163,184,0.08)" },
+                ticks: { color: "#9ca3af" },
+                title: { display: true, text: "Avg temp (°C)", color: "#9ca3af" },
+              },
+            },
+          },
+        });
+      }
+
+      function renderPivotTable(groupedRows) {
+        $("pivot-table-head").innerHTML = `
+          <tr>
+            <th>Tỉnh</th>
+            <th>Năm</th>
+            ${MONTH_LABELS.map((month) => `<th>T${monthNumber(month)}</th>`).join("")}
+          </tr>
+        `;
+        $("pivot-table-body").innerHTML = groupedRows.length
+          ? groupedRows.map((row) => `
+              <tr>
+                <td>${escapeHtml(row.Location)}</td>
+                <td>${escapeHtml(row.year_num)}</td>
+                ${MONTH_LABELS.map((month) => {
+                  const value = row.months[month];
+                  return `<td>${value != null ? Number(value).toFixed(1) : "--"}</td>`;
+                }).join("")}
+              </tr>
+            `).join("")
+          : '<tr><td colspan="14">Không có dữ liệu</td></tr>';
+      }
+
       /* ---------- Feature Navigation ---------- */
       const FEATURE_FETCH = {
         "section-current": fetchLatest,
         "forecast-section": fetchLatest,
         "batch-summary-section": fetchBatchSummary,
         "history-section": fetchChartData,
+        "pivot-section": fetchPivotData,
       };
 
       function activateFeature(targetId) {
@@ -1082,15 +1309,31 @@
         });
         $("chart-location").addEventListener("change", fetchChartData);
 
+        $("pivot-period").addEventListener("change", async () => {
+          await loadBatchLocations($("pivot-period").value, "pivot-location");
+          await populatePivotYears($("pivot-location").value);
+          fetchPivotData();
+        });
+        $("pivot-location").addEventListener("change", async () => {
+          await populatePivotYears($("pivot-location").value);
+          fetchPivotData();
+        });
+        $("pivot-year").addEventListener("change", fetchPivotData);
+        $("load-pivot-btn").addEventListener("click", fetchPivotData);
+
         setDateRangeFromDays(currentDays);
         $("batch-period").value = PRE_MERGE_VIEW;
         $("chart-period").value = PRE_MERGE_VIEW;
+        $("pivot-period").value = POST_MERGE_VIEW;
         setChartRangeForPeriod(PRE_MERGE_VIEW);
         activateFeature("section-current");
         Promise.all([
           loadBatchLocations(PRE_MERGE_VIEW, "batch-location"),
           loadBatchLocations(PRE_MERGE_VIEW, "chart-location"),
-        ]);
+          loadBatchLocations(POST_MERGE_VIEW, "pivot-location"),
+        ]).then(async () => {
+          await populatePivotYears($("pivot-location").value);
+        });
       });
     </script>
   </body>
