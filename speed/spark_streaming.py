@@ -7,16 +7,16 @@ from pyspark.sql.functions import (
 )
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType, ArrayType
 
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "weather_data")
-KAFKA_FORECAST_TOPIC = os.getenv("KAFKA_FORECAST_TOPIC", "weather_forecast_data")
-ES_HOST = os.getenv("ES_HOST", "elasticsearch")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC")
+KAFKA_FORECAST_TOPIC = os.getenv("KAFKA_FORECAST_TOPIC")
+ES_HOST = os.getenv("ES_HOST")
 
 # Cấu hình Index và Checkpoint độc lập cho 2 luồng
 ES_INDEX_REALTIME = "weather_realtime"
 ES_INDEX_AGG = "weather_aggregated_6h"
 ES_INDEX_FORECAST = "weather_forecast"
-CHECKPOINT_DIR = os.getenv("SPARK_CHECKPOINT_DIR", "/app/spark_checkpoints")
+CHECKPOINT_DIR = os.getenv("SPARK_CHECKPOINT_DIR")
 CHECKPOINT_REALTIME = f"{CHECKPOINT_DIR}/weather_realtime"
 CHECKPOINT_AGG = f"{CHECKPOINT_DIR}/weather_agg_6h"
 CHECKPOINT_FORECAST = f"{CHECKPOINT_DIR}/weather_forecast"
