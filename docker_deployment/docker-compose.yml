@@ -97,8 +97,10 @@ services:
         condition: service_started
     networks: [bigdata-net]
     restart: always
-    env_file:
-      - ./spark.env
+    environment:
+      - KAFKA_BOOTSTRAP=kafka:9092
+      - KAFKA_TOPIC=weather_data
+      - ES_HOST=elasticsearch  
     volumes:
       - spark_checkpoints_vol:/app/spark_checkpoints
     mem_limit: 1.5g
@@ -147,7 +149,9 @@ services:
     networks: [bigdata-net]
     restart: no 
     env_file:
-      - ./spark.env
+      - ./minio.env
+    environment:
+      - ES_HOST=elasticsearch
     mem_limit: 1.5g
     cpus: 1.0
 
