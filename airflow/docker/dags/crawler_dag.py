@@ -1,6 +1,5 @@
 from airflow import DAG
 from airflow.providers.docker.operators.docker import DockerOperator
-from airflow.providers.standard.operators.bash import BashOperator
 from pendulum import datetime
 from docker.types import Mount
 
@@ -22,9 +21,21 @@ with DAG(
     template_searchpath=['/opt/airflow']
 ) as dag:
     
-    clean_old_config_task = BashOperator(
-        task_id='clean_old_config_task',
-        bash_command='rm -f /opt/airflow/crawler_state/weather_crawler_state.json'
+    clean_old_state_task = DockerOperator(
+        task_id='clean_old_state_task',
+        image='alpine:latest',
+        command='rm -f /app/state/weather_crawler_state.json',
+        network_mode='bridge',
+        auto_remove='force',
+        docker_url='unix://var/run/docker.sock',
+        mount_tmp_dir=False,
+        mounts=[
+            Mount(
+                source='crawler_state_vol',
+                target='/app/state',
+                type='volume'
+            )
+        ]
     )
 
     weather_crawler_task = DockerOperator(
@@ -46,7 +57,7 @@ with DAG(
         ]
     )
 
-    clean_old_config_task >> weather_crawler_task    
+    clean_old_state_task >> weather_crawler_task    
 
 with DAG(
     dag_id='realtime_environment_pipeline',

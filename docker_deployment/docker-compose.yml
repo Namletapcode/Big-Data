@@ -9,14 +9,14 @@ services:
     networks: [bigdata-net]
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
-    mem_limit: 256m
-    cpus: 0.3
     healthcheck:
       test: ["CMD-SHELL", "echo ruok | nc localhost 2181 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+    mem_limit: 256m
+    cpus: 0.3
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -33,14 +33,14 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    mem_limit: 1g
-    cpus: 0.8
     healthcheck:
       test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+    mem_limit: 1g
+    cpus: 0.8
     
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
@@ -63,7 +63,7 @@ services:
       - "5601:5601"
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-    mem_limit: 1g
+    mem_limit: 768m
 
   speed_layer:
     build: ../speed
@@ -81,6 +81,8 @@ services:
       - ES_HOST=elasticsearch  
     volumes:
       - spark_checkpoints_vol:/app/spark_checkpoints
+    mem_limit: 1.5g
+    cpus: 1.0
 
   minio:
     image: minio/minio:RELEASE.2023-11-20T22-40-07Z
@@ -92,6 +94,8 @@ services:
     env_file:
       - ./minio.env
     command: server /data --console-address ":9001"
+    mem_limit: 512m
+    cpus: 0.5
 
   minio_init:
     image: minio/mc
@@ -122,6 +126,8 @@ services:
       - ./minio.env
     environment:
       - ES_HOST=elasticsearch
+    mem_limit: 1.5g
+    cpus: 1.0
 
   kafka_connect:
     build:
@@ -136,6 +142,8 @@ services:
       - "8083:8083"
     env_file:
       - ./kafka_connect.env
+    mem_limit: 1g
+    cpus: 0.8
 
   serving_api:
     build: ../serving
@@ -154,6 +162,8 @@ services:
       - MINIO_ROOT_PASSWORD=password123
     ports:
       - "8000:8000"
+    mem_limit: 256m
+    cpus: 0.5
 
   airflow-db:
     image: postgres:13-alpine
@@ -211,7 +221,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - crawler_state_vol:/opt/airflow/crawler_state
     command: scheduler
-    mem_limit: 768m
+    mem_limit: 1g
     cpus: 0.6
 
   airflow-dag-processor:
@@ -233,7 +243,7 @@ services:
       - ../crawler:/opt/airflow/crawler
       - /var/run/docker.sock:/var/run/docker.sock
     command: dag-processor
-    mem_limit: 512m
+    mem_limit: 1g
     cpus: 0.4
 
   airflow-triggerer:
@@ -255,7 +265,7 @@ services:
       - ../crawler:/opt/airflow/crawler
       - /var/run/docker.sock:/var/run/docker.sock
     command: triggerer
-    mem_limit: 512m
+    mem_limit: 256m
     cpus: 0.4
 
 volumes:
