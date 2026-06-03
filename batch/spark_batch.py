@@ -36,20 +36,20 @@ from pyspark.sql.types import DoubleType, StringType, StructField, StructType
 from pyspark.sql.window import Window
 
 
-MINIO_USER = os.getenv("MINIO_ROOT_USER", "admin")
-MINIO_PASS = os.getenv("MINIO_ROOT_PASSWORD", "password123")
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://35.240.139.79:9000")
-MINIO_BUCKET = os.getenv("MINIO_BUCKET", "raw-weather-data")
-HISTORICAL_PREFIX = os.getenv("HISTORICAL_PREFIX", "historical")
+MINIO_USER = os.getenv("MINIO_ROOT_USER")
+MINIO_PASS = os.getenv("MINIO_ROOT_PASSWORD")
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET")
+HISTORICAL_PREFIX = os.getenv("HISTORICAL_PREFIX")
 HISTORICAL_FOLDERS = [
     folder.strip()
-    for folder in os.getenv("HISTORICAL_FOLDERS", "34,29").split(",")
+    for folder in (os.getenv("HISTORICAL_FOLDERS") or "").split(",")
     if folder.strip()
 ]
-LOG_BATCH_COUNTS = os.getenv("LOG_BATCH_COUNTS", "false").lower() == "true"
-SKIP_MINIO_WRITES = os.getenv("SKIP_MINIO_WRITES", "false").lower() == "true"
-PROVINCE_MERGE_CUTOFF_DATE = os.getenv("PROVINCE_MERGE_CUTOFF_DATE", "2025-07-01")
-ES_HOST = os.getenv("ES_HOST", "elasticsearch")
+LOG_BATCH_COUNTS = (os.getenv("LOG_BATCH_COUNTS") or "false").lower() == "true"
+SKIP_MINIO_WRITES = (os.getenv("SKIP_MINIO_WRITES") or "false").lower() == "true"
+PROVINCE_MERGE_CUTOFF_DATE = os.getenv("PROVINCE_MERGE_CUTOFF_DATE")
+ES_HOST = os.getenv("ES_HOST")
 ES_INDEX_DAILY = "weather_batch_daily"
 ES_INDEX_STATS = "weather_batch_stats"
 ES_INDEX_YOY = "weather_batch_yoy"
