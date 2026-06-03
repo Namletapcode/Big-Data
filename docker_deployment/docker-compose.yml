@@ -53,6 +53,8 @@ services:
     ports:
       - "9200:9200"
     mem_limit: 4g
+    volumes:
+      - es_data_vol:/usr/share/elasticsearch/data
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.1
@@ -273,3 +275,5 @@ volumes:
     name: crawler_state_vol
   spark_checkpoints_vol:
     name: spark_checkpoints_vol
+  es_data_vol:
+    name: es_data_vol
