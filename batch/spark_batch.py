@@ -22,6 +22,7 @@ from pyspark.sql.functions import (
     max,
     min,
     month,
+    regexp_extract,
     regexp_replace,
     row_number,
     sum as spark_sum,
@@ -46,6 +47,7 @@ HISTORICAL_FOLDERS = [
     if folder.strip()
 ]
 LOG_BATCH_COUNTS = os.getenv("LOG_BATCH_COUNTS", "false").lower() == "true"
+SKIP_MINIO_WRITES = os.getenv("SKIP_MINIO_WRITES", "false").lower() == "true"
 PROVINCE_MERGE_CUTOFF_DATE = os.getenv("PROVINCE_MERGE_CUTOFF_DATE", "2025-07-01")
 ES_HOST = os.getenv("ES_HOST", "elasticsearch")
 ES_INDEX_DAILY = "weather_batch_daily"
@@ -418,7 +420,11 @@ def run_pivot_unpivot_analysis(daily_df: DataFrame) -> DataFrame:
     df_with_time = daily_df.withColumn("year_num", year(col("date"))).withColumn("month_num", month(col("date")))
     
     # 2. PIVOT: Xoay tháng thành 12 cột (Month_1 đến Month_12)
-    pivoted_df = df_with_time.groupBy("Location", "year_num").pivot("month_num", range(1, 13)).avg("avg_temp")
+    group_columns = ["Location", "year_num"]
+    if "province_view" in df_with_time.columns:
+        group_columns.append("province_view")
+
+    pivoted_df = df_with_time.groupBy(*group_columns).pivot("month_num", range(1, 13)).avg("avg_temp")
     
     # Đổi tên các cột tháng cho rõ ràng
     for m in range(1, 13):
@@ -431,8 +437,7 @@ def run_pivot_unpivot_analysis(daily_df: DataFrame) -> DataFrame:
     # 3. UNPIVOT: Sử dụng stack xoay 12 cột tháng về dạng dòng
     stack_expr = ", ".join([f"'Month_{m}', Month_{m}" for m in range(1, 13)])
     unpivoted_df = pivoted_df.selectExpr(
-        "Location", 
-        "year_num", 
+        *group_columns,
         f"stack(12, {stack_expr}) as (Month, avg_temp)"
     ).filter(col("avg_temp").isNotNull())
     
@@ -484,7 +489,9 @@ def main():
         # hadoop-aws JAR: bắt buộc khi chạy local (trong Docker đã được bundled sẵn)
         .config(
             "spark.jars.packages",
-            "org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262",
+            "org.elasticsearch:elasticsearch-spark-30_2.12:8.11.1,"
+            "org.apache.hadoop:hadoop-aws:3.3.4,"
+            "com.amazonaws:aws-java-sdk-bundle:1.12.262",
         )
         .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT)
         .config("spark.hadoop.fs.s3a.access.key", MINIO_USER)
@@ -664,26 +671,36 @@ def main():
     write_to_elasticsearch(valid_df_es, ES_INDEX_VALID_WEATHER)
     logger.info("Đã ghi valid weather data vào ES index '%s'.", ES_INDEX_VALID_WEATHER)
 
-    write_parquet_to_minio(valid_df_to_write, "valid_weather", partition_cols=["year"], bucket_col="Location")
+    if not SKIP_MINIO_WRITES:
+        write_parquet_to_minio(valid_df_to_write, "valid_weather", partition_cols=["year"], bucket_col="Location")
+    else:
+        logger.info("Bỏ qua ghi valid_weather lên MinIO vì SKIP_MINIO_WRITES=true.")
 
     # 2. Ghi dữ liệu tổng hợp hàng ngày (Giai đoạn 2)
     daily_df_to_write = daily_df.withColumn("year", year(col("date")))
-    write_parquet_to_minio(daily_df_to_write, "daily_weather", partition_cols=["year"], bucket_col="Location")
+    if not SKIP_MINIO_WRITES:
+        write_parquet_to_minio(daily_df_to_write, "daily_weather", partition_cols=["year"], bucket_col="Location")
+    else:
+        logger.info("Bỏ qua ghi daily_weather lên MinIO vì SKIP_MINIO_WRITES=true.")
 
     # 3. Ghi dữ liệu so sánh YoY (Giai đoạn 3)
     yoy_df_to_write = yoy_df.withColumn("year", year(col("date")))
-    write_parquet_to_minio(yoy_df_to_write, "yoy_weather", partition_cols=["year"], bucket_col="Location")
+    if not SKIP_MINIO_WRITES:
+        write_parquet_to_minio(yoy_df_to_write, "yoy_weather", partition_cols=["year"], bucket_col="Location")
+    else:
+        logger.info("Bỏ qua ghi yoy_weather lên MinIO vì SKIP_MINIO_WRITES=true.")
 
     # 4. Ghi dữ liệu thống kê cực trị & chuỗi ngày nắng nóng (Giai đoạn 3)
-    write_parquet_to_minio(summary_df, "stats_weather")
+    if not SKIP_MINIO_WRITES:
+        write_parquet_to_minio(summary_df, "stats_weather")
+    else:
+        logger.info("Bỏ qua ghi stats_weather lên MinIO vì SKIP_MINIO_WRITES=true.")
 
     # 5. Thực hiện phân tích Pivot & Unpivot và ghi kết quả (Giai đoạn 3)
     unpivoted_df = run_pivot_unpivot_analysis(daily_df).persist(StorageLevel.MEMORY_AND_DISK)
     unpivoted_count = unpivoted_df.count()
     logger.info("Batch unpivoted rows chuẩn bị ghi ES/MinIO: %d", unpivoted_count)
 
-    # Thêm cột month_num (số nguyên) từ label "Month_N" để API có thể sort đúng thứ tự tháng
-    from pyspark.sql.functions import regexp_extract
     unpivoted_df_es = unpivoted_df.withColumn(
         "month_num",
         regexp_extract(col("Month"), r"(\d+)", 1).cast("integer"),
@@ -693,14 +710,20 @@ def main():
 
     # Ghi dữ liệu unpivot lên MinIO
     unpivoted_df_to_write = unpivoted_df.withColumnRenamed("year_num", "year")
-    write_parquet_to_minio(unpivoted_df_to_write, "unpivoted_weather", partition_cols=["year"], bucket_col="Location")
+    if not SKIP_MINIO_WRITES:
+        write_parquet_to_minio(unpivoted_df_to_write, "unpivoted_weather", partition_cols=["year"], bucket_col="Location")
+    else:
+        logger.info("Bỏ qua ghi unpivoted_weather lên MinIO vì SKIP_MINIO_WRITES=true.")
 
     # 6. Minh họa việc đọc dữ liệu với Partition Pruning từ MinIO
-    logger.info("--- Minh họa đọc dữ liệu áp dụng Partition Pruning ---")
-    minio_output_path = f"s3a://{MINIO_BUCKET}/processed/daily_weather"
-    read_back_df = spark.read.parquet(minio_output_path)
-    pruned_df = read_back_df.filter(col("year") == 2026)
-    logger.info("Số dòng dữ liệu năm 2026 (sau khi Partition Pruning): %d", pruned_df.count())
+    if not SKIP_MINIO_WRITES:
+        logger.info("--- Minh họa đọc dữ liệu áp dụng Partition Pruning ---")
+        minio_output_path = f"s3a://{MINIO_BUCKET}/processed/daily_weather"
+        read_back_df = spark.read.parquet(minio_output_path)
+        pruned_df = read_back_df.filter(col("year") == 2026)
+        logger.info("Số dòng dữ liệu năm 2026 (sau khi Partition Pruning): %d", pruned_df.count())
+    else:
+        logger.info("Bỏ qua đọc kiểm tra Partition Pruning vì SKIP_MINIO_WRITES=true.")
 
     logger.info("========== Batch Job hoàn thành ==========")
 
