@@ -21,14 +21,11 @@
         <button class="feature-btn" id="tab-forecast" role="tab" data-target="forecast-section" aria-controls="forecast-section" aria-selected="false">
           Dự báo thời tiết
         </button>
-        <button class="feature-btn" id="tab-batch" role="tab" data-target="batch-summary-section" aria-controls="batch-summary-section" aria-selected="false">
+        <button class="feature-btn" id="tab-batch" role="tab" data-target="batch-pivot-section" aria-controls="batch-pivot-section" aria-selected="false">
           Thống kê
         </button>
         <button class="feature-btn" id="tab-chart" role="tab" data-target="history-section" aria-controls="history-section" aria-selected="false">
           Dữ liệu lịch sử
-        </button>
-        <button class="feature-btn" id="tab-pivot" role="tab" data-target="pivot-section" aria-controls="pivot-section" aria-selected="false">
-          Pivot & Unpivot
         </button>
       </nav>
 
@@ -143,9 +140,11 @@
           </div>
         </section>
 
-        <!-- Batch Summary Section -->
-        <section id="batch-summary-section" class="card section-panel hidden" role="tabpanel" aria-labelledby="tab-batch">
-          <h2>Thống kê thời tiết</h2>
+        <!-- Batch Summary & Pivot Section (Gộp) -->
+        <section id="batch-pivot-section" class="card section-panel hidden" role="tabpanel" aria-labelledby="tab-batch">
+          <h2>Thống kê</h2>
+
+          <!-- Bộ lọc dùng chung: Giai đoạn tỉnh + Tỉnh -->
           <div class="form-row">
             <label for="batch-period">Giai đoạn tỉnh</label>
             <select id="batch-period">
@@ -157,32 +156,76 @@
               <option value="">Đang tải danh sách tỉnh...</option>
             </select>
           </div>
-          <div class="weather-grid">
-            <div class="item">
-              <span class="label">Nóng nhất lịch sử</span>
-              <span id="bs-hottest" class="value"></span>
+
+          <!-- Phần 1: Thống kê thời tiết -->
+          <div class="batch-stats-block">
+            <div class="weather-grid">
+              <div class="item">
+                <span class="label">Nóng nhất lịch sử</span>
+                <span id="bs-hottest" class="value"></span>
+              </div>
+              <div class="item">
+                <span class="label">Lạnh nhất lịch sử</span>
+                <span id="bs-coldest" class="value"></span>
+              </div>
+              <div class="item">
+                <span class="label">Ngày nóng nhất</span>
+                <span id="bs-hottest-date" class="value"></span>
+              </div>
+              <div class="item">
+                <span class="label">Ngày lạnh nhất</span>
+                <span id="bs-coldest-date" class="value"></span>
+              </div>
             </div>
-            <div class="item">
-              <span class="label">Lạnh nhất lịch sử</span>
-              <span id="bs-coldest" class="value"></span>
-            </div>
-            <div class="item">
-              <span class="label">Ngày nóng nhất</span>
-              <span id="bs-hottest-date" class="value"></span>
-            </div>
-            <div class="item">
-              <span class="label">Ngày lạnh nhất</span>
-              <span id="bs-coldest-date" class="value"></span>
+            <div class="sun-row" style="margin-top:1.5rem">
+              <div>
+                <span class="label">Đợt nóng dài nhất (Ngày)</span>
+                <span id="bs-heatwave-days" class="value" style="color:var(--error); font-size:1.5rem"></span>
+              </div>
+              <div style="text-align:right">
+                <span class="label">Thời gian đợt nóng</span>
+                <span id="bs-heatwave-time" class="value"></span>
+              </div>
             </div>
           </div>
-          <div class="sun-row" style="margin-top:1.5rem">
-            <div>
-              <span class="label">Đợt nóng dài nhất (Ngày)</span>
-              <span id="bs-heatwave-days" class="value" style="color:var(--error); font-size:1.5rem"></span>
-            </div>
-            <div style="text-align:right">
-              <span class="label">Thời gian đợt nóng</span>
-              <span id="bs-heatwave-time" class="value"></span>
+
+          <hr class="section-divider" />
+
+          <!-- Bộ lọc Năm đặt trên phần pivot và dưới phần thống kê -->
+          <div class="form-row" style="margin-top:0.5rem; margin-bottom:1.5rem">
+            <label for="pivot-year">Năm</label>
+            <select id="pivot-year">
+              <option value="">Năm mới nhất</option>
+            </select>
+            <button id="load-pivot-btn" class="secondary-btn">Xem dữ liệu</button>
+          </div>
+
+          <!-- Phần 2: Pivot & Unpivot -->
+          <div class="pivot-block">
+
+            <div id="pivot-status" class="status"></div>
+
+            <div class="pivot-layout">
+              <div class="pivot-chart-panel">
+                <div class="forecast-panel-title">
+                  <span id="pivot-chart-subtitle">Month / avg_temp</span>
+                </div>
+                <div class="pivot-chart-container">
+                  <canvas id="pivotChart"></canvas>
+                </div>
+              </div>
+
+              <div class="pivot-table-panel">
+                <div class="forecast-panel-title">
+                  <span>12 tháng</span>
+                </div>
+                <div class="pivot-table-scroll">
+                  <table class="pivot-table">
+                    <thead id="pivot-table-head"></thead>
+                    <tbody id="pivot-table-body"></tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -260,66 +303,6 @@
             <div class="summary-item">
               <span class="summary-label">Cao nhất</span>
               <span id="sum-max" class="summary-value"></span>
-            </div>
-          </div>
-        </section>
-
-        <!-- Pivot & Unpivot Section -->
-        <section id="pivot-section" class="card pivot-section section-panel hidden" role="tabpanel" aria-labelledby="tab-pivot">
-          <div class="chart-header">
-            <span class="section-kicker">Batch Analysis</span>
-            <h2 class="chart-title">Pivot & Unpivot nhiệt độ theo tháng</h2>
-          </div>
-
-          <div class="date-range-container">
-            <div class="date-range-panel">
-              <div class="date-field">
-                <label for="pivot-period">Giai đoạn tỉnh</label>
-                <select id="pivot-period">
-                  <option value="pre_merge_63">Trước / đến 30-06-2025 (63 tỉnh)</option>
-                  <option value="post_merge_34">Sau 30-06-2025 (34 tỉnh)</option>
-                </select>
-              </div>
-              <div class="date-field">
-                <label for="pivot-location">Tỉnh</label>
-                <select id="pivot-location">
-                  <option value="">Đang tải...</option>
-                </select>
-              </div>
-              <div class="date-field">
-                <label for="pivot-year">Năm</label>
-                <select id="pivot-year">
-                  <option value="">Năm mới nhất</option>
-                </select>
-              </div>
-              <button id="load-pivot-btn" class="secondary-btn">Xem dữ liệu</button>
-            </div>
-          </div>
-
-          <div id="pivot-status" class="status"></div>
-
-          <div class="pivot-layout">
-            <div class="pivot-chart-panel">
-              <div class="forecast-panel-title">
-                <span>Unpivot view</span>
-                <span id="pivot-chart-subtitle">Month / avg_temp</span>
-              </div>
-              <div class="pivot-chart-container">
-                <canvas id="pivotChart"></canvas>
-              </div>
-            </div>
-
-            <div class="pivot-table-panel">
-              <div class="forecast-panel-title">
-                <span>Pivot table</span>
-                <span>12 tháng</span>
-              </div>
-              <div class="pivot-table-scroll">
-                <table class="pivot-table">
-                  <thead id="pivot-table-head"></thead>
-                  <tbody id="pivot-table-body"></tbody>
-                </table>
-              </div>
             </div>
           </div>
         </section>
@@ -857,7 +840,6 @@
           if (!res.ok) throw new Error("No data");
           const d = await res.json();
           
-          $("batch-summary-section").classList.remove("hidden");
           $("bs-hottest").textContent = (d.hottest_temp != null ? d.hottest_temp.toFixed(1) : "?") + " °C";
           $("bs-coldest").textContent = (d.coldest_temp != null ? d.coldest_temp.toFixed(1) : "?") + " °C";
           $("bs-hottest-date").textContent = d.hottest_date || "N/A";
@@ -870,7 +852,7 @@
               $("bs-heatwave-time").textContent = "Không có ghi nhận";
           }
         } catch (e) {
-          $("batch-summary-section").classList.add("hidden");
+          console.warn("Batch summary error:", e);
         }
       }
 
@@ -1055,7 +1037,7 @@
         }
       }
 
-      /* ---------- Pivot & Unpivot ---------- */
+      /* ---------- Pivot & Unpivot (dùng chung bộ lọc batch-period, batch-location) ---------- */
       const MONTH_LABELS = Array.from({ length: 12 }, (_, i) => `Month_${i + 1}`);
 
       function monthNumber(monthLabel) {
@@ -1087,7 +1069,7 @@
         try {
           const params = new URLSearchParams({
             location,
-            province_view: $("pivot-period").value,
+            province_view: $("batch-period").value,
             limit: "1000",
           });
           const res = await fetch(`/api/weather/batch/unpivoted?${params}`);
@@ -1104,7 +1086,7 @@
       }
 
       async function fetchPivotData() {
-        const loc = $("pivot-location").value;
+        const loc = $("batch-location").value;
         if (!loc) return;
 
         $("pivot-status").textContent = "Đang tải dữ liệu pivot/unpivot...";
@@ -1113,7 +1095,7 @@
         try {
           const params = new URLSearchParams({
             location: loc,
-            province_view: $("pivot-period").value,
+            province_view: $("batch-period").value,
             limit: "1000",
           });
           if ($("pivot-year").value) params.set("year", $("pivot-year").value);
@@ -1216,12 +1198,18 @@
       }
 
       /* ---------- Feature Navigation ---------- */
+      /* Hàm gộp: khi mở tab batch-pivot-section, gọi cả batch summary + pivot */
+      async function fetchBatchAndPivot() {
+        await fetchBatchSummary();
+        await populatePivotYears($("batch-location").value);
+        await fetchPivotData();
+      }
+
       const FEATURE_FETCH = {
         "section-current": fetchLatest,
         "forecast-section": fetchLatest,
-        "batch-summary-section": fetchBatchSummary,
+        "batch-pivot-section": fetchBatchAndPivot,
         "history-section": fetchChartData,
-        "pivot-section": fetchPivotData,
       };
 
       function activateFeature(targetId) {
@@ -1296,11 +1284,12 @@
           if (active) FEATURE_FETCH[active.dataset.target]?.();
         });
 
+        /* Batch-period và batch-location dùng chung cho cả Thống kê + Pivot */
         $("batch-period").addEventListener("change", async () => {
           await loadBatchLocations($("batch-period").value, "batch-location");
-          fetchBatchSummary();
+          fetchBatchAndPivot();
         });
-        $("batch-location").addEventListener("change", fetchBatchSummary);
+        $("batch-location").addEventListener("change", fetchBatchAndPivot);
 
         $("chart-period").addEventListener("change", async () => {
           setChartRangeForPeriod($("chart-period").value);
@@ -1309,30 +1298,19 @@
         });
         $("chart-location").addEventListener("change", fetchChartData);
 
-        $("pivot-period").addEventListener("change", async () => {
-          await loadBatchLocations($("pivot-period").value, "pivot-location");
-          await populatePivotYears($("pivot-location").value);
-          fetchPivotData();
-        });
-        $("pivot-location").addEventListener("change", async () => {
-          await populatePivotYears($("pivot-location").value);
-          fetchPivotData();
-        });
         $("pivot-year").addEventListener("change", fetchPivotData);
         $("load-pivot-btn").addEventListener("click", fetchPivotData);
 
         setDateRangeFromDays(currentDays);
         $("batch-period").value = PRE_MERGE_VIEW;
         $("chart-period").value = PRE_MERGE_VIEW;
-        $("pivot-period").value = POST_MERGE_VIEW;
         setChartRangeForPeriod(PRE_MERGE_VIEW);
         activateFeature("section-current");
         Promise.all([
           loadBatchLocations(PRE_MERGE_VIEW, "batch-location"),
           loadBatchLocations(PRE_MERGE_VIEW, "chart-location"),
-          loadBatchLocations(POST_MERGE_VIEW, "pivot-location"),
         ]).then(async () => {
-          await populatePivotYears($("pivot-location").value);
+          await populatePivotYears($("batch-location").value);
         });
       });
     </script>

@@ -1418,3 +1418,27 @@ button:hover {
   padding: 0.2rem 0;
 }
 
+/* Section divider between Stats and Pivot blocks */
+.section-divider {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), rgba(125, 211, 252, 0.35), var(--border), transparent);
+  margin: 2rem 0;
+}
+
+.batch-stats-block,
+.pivot-block {
+  animation: fadeInUp 0.35s ease both;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
