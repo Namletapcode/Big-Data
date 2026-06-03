@@ -32,7 +32,10 @@ def fetch_weather_data(lat, lon, type, max_iter=10, interval=0.5):
     url_suffix = '/today' if type == 'current' else ''
     url = f'{BASE_URL}/{lat},{lon}{url_suffix}'
 
-    params['include'] = type
+    if type == 'fcst':
+        params['include'] = 'fcst,hours'
+    else:
+        params['include'] = type
 
     for _ in range(max_iter):
         try:

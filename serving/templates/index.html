@@ -769,12 +769,21 @@
         const allHours = todayHours.concat(tomorrowHours);
         if (!allHours.length) return [];
 
-        const currentHour = localTime ? Number(localTime.slice(11, 13)) : null;
-        const startIndex = Number.isFinite(currentHour)
-          ? Math.max(0, allHours.findIndex((h) => Number((h.datetime || "").slice(0, 2)) >= currentHour))
-          : 0;
+        let targetHour = null;
+        if (localTime) {
+          const hr = Number(localTime.slice(11, 13));
+          const min = Number(localTime.slice(14, 16));
+          if (Number.isFinite(hr) && Number.isFinite(min)) {
+            targetHour = min >= 30 ? hr + 1 : hr;
+          }
+        }
 
-        return allHours.slice(startIndex === -1 ? 0 : startIndex, (startIndex === -1 ? 0 : startIndex) + 24);
+        let startIndex = 0;
+        if (targetHour != null) {
+          startIndex = Math.min(allHours.length - 1, Math.max(0, targetHour));
+        }
+
+        return allHours.slice(startIndex, startIndex + 24);
       }
 
       function renderForecast(d) {
@@ -791,7 +800,7 @@
           <div class="hour-card">
             <span class="hour-time">${idx === 0 ? "Bây giờ" : fmtHour(h.datetime)}</span>
             <span class="hour-icon" aria-hidden="true">${weatherIcon(h.icon)}</span>
-            <span class="hour-temp">${fmtTemp(h.temp)}</span>
+            <span class="hour-temp">${h.temp != null ? fmtTemp(h.temp) : ""}</span>
             <span class="hour-rain">${h.precipprob != null ? Math.round(h.precipprob) + "%" : ""}</span>
           </div>
         `).join("");
