@@ -1,0 +1,164 @@
+# 1. CẤP QUYỀN (RBAC) CHO AIRFLOW TẠO POD
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: airflow-sa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: airflow-role
+rules:
+- apiGroups: ["", "apps", "batch"]
+  resources: ["pods", "pods/log", "jobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airflow-role-binding
+subjects:
+- kind: ServiceAccount
+  name: airflow-sa
+roleRef:
+  kind: Role
+  name: airflow-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# 2. KHỞI TẠO DỊCH VỤ VÀ GIAO DIỆN
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    name: web
+  selector:
+    app: airflow
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # Đảm bảo chỉ có 1 Pod chạy để tránh xung đột SQLite
+  selector:
+    matchLabels:
+      app: airflow
+  template:
+    metadata:
+      labels:
+        app: airflow
+    spec:
+      serviceAccountName: airflow-sa
+      # 1. Khởi tạo DB (Chạy xong tự tắt)
+      initContainers:
+      - name: fix-permissions
+        image: busybox:1.36
+        command: ["sh", "-c", "chown -R 50000:0 /opt/airflow"]
+        securityContext:
+          runAsUser: 0 # Phải dùng quyền root (0) để đổi chủ
+        volumeMounts:
+        - name: airflow-db-vol
+          mountPath: /opt/airflow
+      - name: airflow-init
+        image: apache/airflow:2.7.1-python3.9
+        env:
+        - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+          value: "sqlite:////opt/airflow/airflow.db"
+        - name: AIRFLOW_USER
+          valueFrom:
+            secretKeyRef:
+              name: airflow-secrets
+              key: admin-user
+        - name: AIRFLOW_PASS
+          valueFrom:
+            secretKeyRef:
+              name: airflow-secrets
+              key: admin-pass
+        command: ["bash", "-c"]
+        args:
+        - |
+          airflow db init && \
+          airflow users create --role Admin --username $AIRFLOW_USER --email admin@example.com --firstname admin --lastname admin --password $AIRFLOW_PASS || true
+        volumeMounts:
+        - name: airflow-db-vol
+          mountPath: /opt/airflow
+      # 2. Hai container chạy song song (Nếu 1 cái sập, Pod sẽ restart)
+      containers:
+      - name: airflow-webserver
+        image: apache/airflow:2.7.1-python3.9
+        resources:
+          requests: 
+            memory: "100Mi"
+            cpu: "50m"
+          limits:
+            memory: "1.5Gi"
+            cpu: "1000m"
+        command: ["airflow", "webserver"]
+        env:
+        - name: AIRFLOW__CORE__LOAD_EXAMPLES
+          value: "False"
+        - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+          value: "sqlite:////opt/airflow/airflow.db"
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: airflow-db-vol
+          mountPath: /opt/airflow
+        - name: dags-volume
+          mountPath: /opt/airflow/dags/weather_batch_dag.py
+          subPath: weather_batch_dag.py
+        - name: dags-volume
+          mountPath: /opt/airflow/dags/crawler_dag.py
+          subPath: crawler_dag.py
+          
+      - name: airflow-scheduler
+        image: apache/airflow:2.7.1-python3.9
+        resources:
+          requests: 
+            memory: "100Mi"
+            cpu: "50m"
+          limits:
+            memory: "1.5Gi"
+            cpu: "1000m"
+        command: ["airflow", "scheduler"]
+        env:
+        - name: AIRFLOW__CORE__LOAD_EXAMPLES
+          value: "False"
+        - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+          value: "sqlite:////opt/airflow/airflow.db"
+        volumeMounts:
+        - name: airflow-db-vol
+          mountPath: /opt/airflow
+        - name: dags-volume
+          mountPath: /opt/airflow/dags/weather_batch_dag.py
+          subPath: weather_batch_dag.py
+        - name: dags-volume
+          mountPath: /opt/airflow/dags/crawler_dag.py
+          subPath: crawler_dag.py
+          
+      volumes:
+      #  Trỏ vào PVC 
+      - name: airflow-db-vol
+        persistentVolumeClaim:
+          claimName: airflow-pvc
+      - name: dags-volume
+        configMap:
+          name: airflow-dags
+---
+# --- KHỞI TẠO Ổ CỨNG VẬT LÝ CHO AIRFLOW ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: airflow-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi # Cấp 2GB để lưu trữ Database của Airflow

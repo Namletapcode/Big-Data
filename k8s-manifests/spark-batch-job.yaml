@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: weather-batch-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: spark-batch
+    spec:
+      containers:
+      - name: spark-batch
+        image: asia-southeast1-docker.pkg.dev/bigdata-k8s-project/bigdata-repo/my-spark-batch:latest
+        imagePullPolicy: Always
+        env:
+        - name: ES_HOST
+          value: "elasticsearch"
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: storage-secrets
+              key: minio-user
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: storage-secrets
+              key: minio-pass
+      restartPolicy: Never

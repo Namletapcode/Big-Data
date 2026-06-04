@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: serving-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: serving-api
+  template:
+    metadata:
+      labels:
+        app: serving-api
+    spec:
+      containers:
+      - name: fastapi-container
+        image: asia-southeast1-docker.pkg.dev/weather-k8s/bigdata-repo/serving-api:v1
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: ES_HOST
+          value: "http://elasticsearch:9200" 
+        - name: ES_INDEX
+          value: "weather_realtime"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: serving-service
+spec:
+  type: LoadBalancer 
+  ports:
+  - port: 80         
+    targetPort: 8000 
+  selector:
+    app: serving-api

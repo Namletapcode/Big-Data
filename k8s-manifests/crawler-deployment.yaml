@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment 
+metadata:
+  name: weather-crawler
+spec:
+  replicas: 1 # Số lượng crawler song song
+  selector:
+    matchLabels:
+      app: crawler
+  template:
+    metadata:
+      labels:
+        app: crawler
+    spec:
+      containers:
+      - name: crawler
+        image: "asia-southeast1-docker.pkg.dev/bigdata-k8s-project/bigdata-repo/my-weather-crawler:v5"
+        resources:
+          requests: 
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
+        imagePullPolicy: Always
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "my-kafka:9092"
+        - name: PYTHONUNBUFFERED     
+          value: "1"
+        - name: WEATHER_API_KEYS
+          valueFrom:
+            secretKeyRef:
+              name: weather-secrets # Lấy từ weather-secrets
+              key: api-keys # Tên của chìa khóa trong weather-secrets

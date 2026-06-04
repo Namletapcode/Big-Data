@@ -1,0 +1,70 @@
+apiVersion: "sparkoperator.k8s.io/v1beta2"
+kind: SparkApplication
+metadata:
+  name: weather-spark-streaming
+  namespace: default
+
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: "asia-southeast1-docker.pkg.dev/weather-k8s/bigdata-repo/my-spark-streaming:v1"
+  imagePullPolicy: Always 
+  mainApplicationFile: "local:///opt/spark/work-dir/spark_streaming.py"
+  sparkVersion: "3.5.0"
+  restartPolicy:
+    type: OnFailure
+    onFailureRetries: 3
+    onFailureRetryInterval: 10
+
+  sparkConf:
+    "spark.jars.ivy": "/tmp/.ivy2"  
+    
+  deps:
+    packages:
+      - "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0"
+      - "org.elasticsearch:elasticsearch-spark-30_2.12:7.17.0"
+      # - "org.apache.hadoop:hadoop-aws:3.3.4"
+      # - "com.amazonaws:aws-java-sdk-bundle:1.12.262"
+  
+  # 1. Cấu hình Pod Quản lý (Driver)
+  driver:
+    cores: 1
+    coreRequest: "200m"    
+    coreLimit: "1000m"     
+    memory: "1024m"         
+    serviceAccount: spark-operator-sa 
+    labels:
+      version: 3.5.0
+    env:
+      - name: MINIO_ROOT_USER
+        valueFrom:
+          secretKeyRef:
+            name: storage-secrets
+            key: minio-user
+      - name: MINIO_ROOT_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: storage-secrets
+            key: minio-pass
+  
+  # 2. Cấu hình Pod (Executor)
+  executor:
+    cores: 1
+    instances: 2     
+    coreRequest: "200m"    
+    coreLimit: "1000m"      
+    memory: "1024m"        
+    labels:
+      version: 3.5.0
+    env:
+      - name: MINIO_ROOT_USER
+        valueFrom:
+          secretKeyRef:
+            name: storage-secrets
+            key: minio-user
+      - name: MINIO_ROOT_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: storage-secrets
+            key: minio-pass

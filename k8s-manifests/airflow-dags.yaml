@@ -1,0 +1,163 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-dags
+data:
+  weather_batch_dag.py: |
+    from datetime import datetime
+    from airflow import DAG
+    from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
+    from kubernetes.client import models as k8s
+    from airflow.kubernetes.secret import Secret
+
+    default_args = {'owner': 'airflow', 'start_date': datetime(2023, 1, 1)}
+    secret_minio_user = Secret('env', 'MINIO_ROOT_USER', 'storage-secrets', 'minio-user')
+    secret_minio_pass = Secret('env', 'MINIO_ROOT_PASSWORD', 'storage-secrets', 'minio-pass')
+
+    # Lập lịch chạy lúc 0h00 mỗi ngày
+    with DAG('weather_batch_dag', default_args=default_args, schedule_interval='0 0 * * *', catchup=False) as dag:
+        
+        # Gọi trực tiếp Image chứa Spark Batch
+        run_batch = KubernetesPodOperator(
+            namespace='default',
+            image='asia-southeast1-docker.pkg.dev/weather-k8s/bigdata-repo/my-spark-batch:latest',
+            # cmds=["/opt/spark/bin/spark-submit", 
+            #   "--driver-memory", "512m", 
+            #   "spark_batch.py"],
+            name="spark-batch-pod",
+            task_id="run_spark_batch",
+            get_logs=True,
+            image_pull_policy='Always', 
+            in_cluster=True,
+            is_delete_operator_pod=False, # Giữ lại Pod sau khi chạy xong để dễ xem log
+            container_resources=k8s.V1ResourceRequirements(   
+                requests={"memory": "256Mi", "cpu": "50m"},
+                limits={"memory": "1536Mi", "cpu": "1000m"}
+            ),
+            secrets=[secret_minio_user, secret_minio_pass],
+            # 3. phiên bản Python để PySpark giao tiếp
+            env_vars={
+                "PYSPARK_PYTHON": "python3",
+                "PYSPARK_DRIVER_PYTHON": "python3",
+                "ES_HOST": "elasticsearch",
+                "MINIO_ENDPOINT": "http://minio:9000"
+            }
+        )
+        run_inference = KubernetesPodOperator(
+            namespace='default',
+            image='asia-southeast1-docker.pkg.dev/weather-k8s/bigdata-repo/my-spark-batch:latest',
+            name="spark-inference-pod",
+            task_id="run_spark_inference",
+            cmds=["spark-submit"],
+            arguments=[
+                "--packages", "org.elasticsearch:elasticsearch-spark-30_2.12:7.17.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262",
+                "spark_inference.py" 
+            ],
+            image_pull_policy='Always',
+            get_logs=True,
+            is_delete_operator_pod=False,
+            # Cấp tài nguyên tránh OOM kill
+            container_resources=k8s.V1ResourceRequirements(   
+                requests={"memory": "256Mi", "cpu": "50m"},
+                limits={"memory": "1536Mi", "cpu": "1000m"}
+            ),
+            secrets=[secret_minio_user, secret_minio_pass], 
+            env_vars={
+                "ES_HOST": "elasticsearch",
+                "MINIO_ENDPOINT": "http://minio:9000"
+            }
+        )
+        run_batch >> run_inference
+  crawler_dag.py: |
+    from airflow import DAG
+    from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
+    from airflow.operators.bash import BashOperator
+    from pendulum import datetime
+    from airflow.kubernetes.secret import Secret
+
+    default_args = {
+        'owner': 'NamLe',
+        'depends_on_past': False,
+        'retries': 0
+    }
+
+    # Kéo Secret từ K8s vào biến môi trường cho Pod
+    secret_weather = Secret('env', 'VISUAL_CROSSING_API_KEY_LIST', 'weather-secrets', 'api-keys')
+    secret_pollution = Secret('env', 'OPEN_WEATHER_API_KEY_LIST', 'weather-secrets', 'pollution_api_keys')
+
+    with DAG(
+        dag_id='crawler_pipeline',
+        default_args=default_args,
+        start_date=datetime(2026, 1, 1, tz='Asia/Bangkok'),
+        schedule='5,35 * * * *',
+        catchup=False
+    ) as dag:
+        
+        weather_crawler_task = KubernetesPodOperator(
+            task_id='weather_crawler_task',
+            name='weather_crawler_task',
+            namespace='default',
+            image='asia-southeast1-docker.pkg.dev/weather-k8s/bigdata-repo/my-weather-crawler:v5',
+            in_cluster=True,
+            cmds=['python3'],
+            arguments=['-u', 'weather_crawler/weather_crawler.py', '--type', 'current'],
+            is_delete_operator_pod=True,
+            get_logs=True,
+            image_pull_policy='Always',
+            secrets=[secret_weather], 
+            env_vars={
+                "KAFKA_BOOTSTRAP_SERVERS": "my-kafka:9092",
+                "PYTHONUNBUFFERED": "1"
+            }
+        )
+
+        weather_forecast_crawler_task = KubernetesPodOperator(
+            task_id='weather_forecast_crawler_task',
+            name='weather_forecast_crawler_task',
+            namespace='default',
+            image='asia-southeast1-docker.pkg.dev/weather-k8s/bigdata-repo/my-weather-crawler:v5',
+            in_cluster=True,
+            cmds=['python3'],
+            arguments=['-u', 'weather_crawler/weather_crawler.py', '--type', 'fcst'],
+            is_delete_operator_pod=True,
+            get_logs=True,
+            image_pull_policy='Always',
+            secrets=[secret_weather], 
+            env_vars={
+                "KAFKA_BOOTSTRAP_SERVERS": "my-kafka:9092",
+                "PYTHONUNBUFFERED": "1"
+            }
+        )
+
+        pollution_crawler_task = KubernetesPodOperator(
+            task_id='pollution_crawler_task',
+            name='pollution_crawler_task',
+            namespace='default',
+            image='asia-southeast1-docker.pkg.dev/weather-k8s/bigdata-repo/my-weather-crawler:v5',
+            in_cluster=True,
+            cmds=['python3'],
+            arguments=['-u', 'pollution_crawler/pollution_crawler.py'],
+            is_delete_operator_pod=True,
+            get_logs=True,
+            image_pull_policy='Always',
+            secrets=[secret_pollution],
+            env_vars={
+                "KAFKA_BOOTSTRAP_SERVERS": "my-kafka:9092",
+                "PYTHONUNBUFFERED": "1"
+            }
+        )
+
+        [weather_crawler_task, weather_forecast_crawler_task, pollution_crawler_task]
+
+    with DAG(
+        dag_id='clean_old_file',
+        default_args=default_args,
+        start_date=datetime(2026, 1, 1, tz='Asia/Bangkok'),
+        schedule='0 0 * * *',
+        catchup=False
+    ) as dag:
+        
+        clean_old_config_task = BashOperator(
+            task_id='clean_old_config_task',
+            bash_command='echo "Clean state task executed"' 
+        )
