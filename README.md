@@ -24,22 +24,19 @@ Hệ thống được chia thành 5 thành phần lõi, vận hành liền mạc
 ## 🚀 Hướng dẫn Cài đặt & Khởi chạy
 
 ### 1. Cấu hình biến môi trường (.env)
-Hệ thống sử dụng các khóa API để thu thập dữ liệu. Trong thư mục `crawler`, bạn cần tạo/chỉnh sửa file `.env` và điền các API Key tương ứng:
+Hệ thống sử dụng các API key để thu thập dữ liệu. Trong thư mục `crawler`, bạn cần tạo file `.env` và điền các API key tương ứng. Bạn có thể lấy key tại các trang sau:
+* Thời tiết: [Visual Crossing](https://www.visualcrossing.com/)
+* Ô nhiễm: [Open Weather Map](https://openweathermap.org/)
+* Tọa độ: [Country State City](https://countrystatecity.in/)
 
 ```env
 # crawler/.env
-
-# Đăng ký tại: [https://www.visualcrossing.com/](https://www.visualcrossing.com/)
 VISUAL_CROSSING_API_KEY_LIST=key1,key2,key3...
-
-# Đăng ký tại: [https://openweathermap.org/](https://openweathermap.org/)
 OPEN_WEATHER_API_KEY_LIST=key1,key2,key3,...
-
-# Đăng ký tại: [https://countrystatecity.in/](https://countrystatecity.in/)
 COUNTRY_STATE_CITY_API_KEY=key
 ```
 
-> **Lưu ý:** Crawler hỗ trợ cơ chế luân phiên khóa (API Key Rotation). Bạn có thể cung cấp nhiều key cùng lúc (ngăn cách bởi dấu phẩy, không khoảng trắng) để tận dụng tối đa Quota miễn phí.
+> **Lưu ý:** Crawler hỗ trợ cơ chế luân phiên khóa. Bạn có thể cung cấp nhiều key cùng lúc (ngăn cách bởi dấu phẩy, không khoảng trắng) để tận dụng tối đa Quota miễn phí.
 
 ### 2. Khởi động Cụm hệ thống (Docker Compose)
 Di chuyển vào thư mục `docker_deployment` và chạy tập lệnh khởi tạo tương ứng với hệ điều hành của bạn:
