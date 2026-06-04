@@ -12,6 +12,7 @@ from pyspark.sql.functions import (
     broadcast,
     coalesce,
     col,
+    concat_ws,
     countDistinct,
     date_format,
     datediff,
@@ -25,6 +26,7 @@ from pyspark.sql.functions import (
     regexp_extract,
     regexp_replace,
     row_number,
+    sha2,
     sum as spark_sum,
     to_date,
     to_timestamp,
@@ -47,7 +49,8 @@ HISTORICAL_FOLDERS = [
     if folder.strip()
 ]
 LOG_BATCH_COUNTS = (os.getenv("LOG_BATCH_COUNTS") or "false").lower() == "true"
-SKIP_MINIO_WRITES = (os.getenv("SKIP_MINIO_WRITES") or "false").lower() == "true"
+SKIP_VALID_WEATHER_ES = (os.getenv("SKIP_VALID_WEATHER_ES") or "true").lower() == "true"
+SPARK_SQL_SHUFFLE_PARTITIONS = os.getenv("SPARK_SQL_SHUFFLE_PARTITIONS") or "32"
 PROVINCE_MERGE_CUTOFF_DATE = os.getenv("PROVINCE_MERGE_CUTOFF_DATE")
 ES_HOST = os.getenv("ES_HOST")
 ES_INDEX_DAILY = "weather_batch_daily"
@@ -384,17 +387,30 @@ def ensure_elasticsearch_index(index: str) -> None:
 
 
 def write_to_elasticsearch(df: DataFrame, index: str) -> None:
-    # ES-Hadoop can race automatic index creation on the first distributed write.
+    # Ghi upsert để batch refresh không làm rỗng index khi job đang chạy hoặc bị restart giữa chừng.
     ensure_elasticsearch_index(index)
     es_nodes = _es_nodes_host()
     (
         df.write.format("org.elasticsearch.spark.sql")
-        .mode("overwrite")
+        .mode("append")
         .option("es.nodes", es_nodes)
         .option("es.port", "9200")
         .option("es.resource", index)
         .option("es.nodes.wan.only", "true")
+        .option("es.mapping.id", "_es_id")
+        .option("es.mapping.exclude", "_es_id")
+        .option("es.write.operation", "upsert")
         .save()
+    )
+
+
+def with_es_id(df: DataFrame, *cols_for_id: str) -> DataFrame:
+    available_cols = [c for c in cols_for_id if c in df.columns]
+    if not available_cols:
+        raise ValueError("Cần ít nhất một cột tồn tại để tạo _es_id")
+    return df.withColumn(
+        "_es_id",
+        sha2(concat_ws("||", *[coalesce(col(c).cast("string"), lit("")) for c in available_cols]), 256),
     )
 
 
@@ -448,38 +464,6 @@ def run_pivot_unpivot_analysis(daily_df: DataFrame) -> DataFrame:
     return unpivoted_df
 
 
-def write_parquet_to_minio(df: DataFrame, table_name: str, partition_cols: list = None, bucket_col: str = None, num_buckets: int = 5) -> None:
-    """
-    Ghi dữ liệu ra MinIO Parquet với các lựa chọn phân vùng (Partitioning) và phân cụm (Bucketing)
-    để tối ưu hóa hiệu năng truy vấn cho từng loại dữ liệu.
-    """
-    base_path = f"s3a://{MINIO_BUCKET}/processed/{table_name}"
-    logger.info("========== Ghi bảng '%s' lên MinIO tại: %s ==========", table_name, base_path)
-    
-    writer = df.write.format("parquet").mode("overwrite")
-    
-    if partition_cols:
-        writer = writer.partitionBy(*partition_cols)
-        
-    if bucket_col:
-        writer = writer.bucketBy(num_buckets, bucket_col).sortBy(bucket_col)
-        
-    try:
-        if bucket_col:
-            writer.option("path", base_path).saveAsTable(table_name)
-        else:
-            writer.save(base_path)
-        logger.info("✓ Đã ghi bảng '%s' lên MinIO thành công.", table_name)
-    except Exception as e:
-        logger.warning("Không thể lưu dạng Spark Table cho '%s': %s", table_name, e)
-        logger.info("→ Đang ghi fallback: Chỉ sử dụng Partitioning thông thường...")
-        fallback_writer = df.write.format("parquet").mode("overwrite")
-        if partition_cols:
-            fallback_writer = fallback_writer.partitionBy(*partition_cols)
-        fallback_writer.save(base_path)
-        logger.info("✓ Đã ghi fallback bảng '%s' lên MinIO thành công.", table_name)
-
-
 def main():
     logger.info("========== Khởi động Batch Job: Kéo dữ liệu từ MinIO ==========")
     logger.info("MinIO endpoint  : %s", MINIO_ENDPOINT)
@@ -507,8 +491,9 @@ def main():
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
-    spark.conf.set("spark.sql.shuffle.partitions", "200")
+    spark.conf.set("spark.sql.shuffle.partitions", SPARK_SQL_SHUFFLE_PARTITIONS)
     logger.info("SparkSession khởi tạo thành công (app: %s)", spark.sparkContext.appName)
+    logger.info("Spark SQL shuffle partitions: %s", SPARK_SQL_SHUFFLE_PARTITIONS)
 
     paths_to_read = [
         f"s3a://{MINIO_BUCKET}/{HISTORICAL_PREFIX}/{folder}/*"
@@ -519,7 +504,12 @@ def main():
         logger.info("  • %s", p)
 
     try:
-        df = spark.read.schema(RAW_WEATHER_SCHEMA).option("mode", "DROPMALFORMED").json(paths_to_read)
+        df = (
+            spark.read.schema(RAW_WEATHER_SCHEMA)
+            .option("mode", "DROPMALFORMED")
+            .option("recursiveFileLookup", "true")
+            .json(paths_to_read)
+        )
     except Exception as exc:  # noqa: BLE001
         logger.error("[MinIO READ] ✗ Không thể đọc dữ liệu từ MinIO. Lỗi: %s", exc)
         logger.error(
@@ -569,16 +559,20 @@ def main():
         logger.info("Batch valid raw rows (sau filter): %d", valid_count)
 
     daily_df = build_daily_aggregates(valid_df).persist(StorageLevel.MEMORY_AND_DISK)
-    daily_count = daily_df.count()
-    logger.info("Batch daily aggregate rows: %d", daily_count)
-    write_to_elasticsearch(daily_df, ES_INDEX_DAILY)
+    logger.info("Bắt đầu tạo và ghi daily aggregates vào ES index '%s'.", ES_INDEX_DAILY)
+    write_to_elasticsearch(with_es_id(daily_df, "Location", "province_view", "date"), ES_INDEX_DAILY)
     logger.info("Đã ghi daily data vào ES index '%s'.", ES_INDEX_DAILY)
+    if LOG_BATCH_COUNTS:
+        daily_count = daily_df.count()
+        logger.info("Batch daily aggregate rows: %d", daily_count)
 
     yoy_df = build_yoy_comparison(daily_df).persist(StorageLevel.MEMORY_AND_DISK)
-    yoy_count = yoy_df.count()
-    logger.info("Batch YoY rows: %d", yoy_count)
-    write_to_elasticsearch(yoy_df, ES_INDEX_YOY)
+    logger.info("Bắt đầu tạo và ghi YoY vào ES index '%s'.", ES_INDEX_YOY)
+    write_to_elasticsearch(with_es_id(yoy_df, "Location", "province_view", "date"), ES_INDEX_YOY)
     logger.info("Đã ghi YoY data vào ES index '%s'.", ES_INDEX_YOY)
+    if LOG_BATCH_COUNTS:
+        yoy_count = yoy_df.count()
+        logger.info("Batch YoY rows: %d", yoy_count)
 
     summary_group = ["Location"]
     if "province_view" in daily_df.columns:
@@ -655,75 +649,43 @@ def main():
         )
         .fillna({"longest_heatwave_days": 0, "heatwave_max_temp": 0.0})
     )
-    summary_count = summary_df.count()
-    logger.info("Batch summary rows: %d", summary_count)
-    write_to_elasticsearch(summary_df, ES_INDEX_STATS)
+    logger.info("Bắt đầu tạo và ghi summary/stats vào ES index '%s'.", ES_INDEX_STATS)
+    write_to_elasticsearch(with_es_id(summary_df, "Location", "province_view"), ES_INDEX_STATS)
     logger.info("Đã ghi summary/stats data vào ES index '%s'.", ES_INDEX_STATS)
+    if LOG_BATCH_COUNTS:
+        summary_count = summary_df.count()
+        logger.info("Batch summary rows: %d", summary_count)
 
-    # 1. Ghi dữ liệu đã làm sạch và mapping (Giai đoạn 1)
-    valid_df_to_write = valid_df.withColumn("year", year(col("Local_Time"))).persist(StorageLevel.MEMORY_AND_DISK)
-
-    valid_weather_count = valid_df_to_write.count()
-    logger.info("Batch valid weather rows chuẩn bị ghi ES/MinIO: %d", valid_weather_count)
-
-    # ES-Hadoop không serialize TimestampType tốt → cast sang string trước khi ghi
-    valid_df_es = valid_df_to_write.withColumn("Local_Time", col("Local_Time").cast(StringType()))
-    write_to_elasticsearch(valid_df_es, ES_INDEX_VALID_WEATHER)
-    logger.info("Đã ghi valid weather data vào ES index '%s'.", ES_INDEX_VALID_WEATHER)
-
-    if not SKIP_MINIO_WRITES:
-        write_parquet_to_minio(valid_df_to_write, "valid_weather", partition_cols=["year"], bucket_col="Location")
+    if not SKIP_VALID_WEATHER_ES:
+        # ES-Hadoop không serialize TimestampType tốt nên cast sang string trước khi ghi ES.
+        valid_df_to_write = valid_df.withColumn("year", year(col("Local_Time"))).persist(StorageLevel.MEMORY_AND_DISK)
     else:
-        logger.info("Bỏ qua ghi valid_weather lên MinIO vì SKIP_MINIO_WRITES=true.")
+        valid_df_to_write = None
 
-    # 2. Ghi dữ liệu tổng hợp hàng ngày (Giai đoạn 2)
-    daily_df_to_write = daily_df.withColumn("year", year(col("date")))
-    if not SKIP_MINIO_WRITES:
-        write_parquet_to_minio(daily_df_to_write, "daily_weather", partition_cols=["year"], bucket_col="Location")
+    if not SKIP_VALID_WEATHER_ES and valid_df_to_write is not None:
+        if LOG_BATCH_COUNTS:
+            valid_weather_count = valid_df_to_write.count()
+            logger.info("Batch valid weather rows chuẩn bị ghi ES: %d", valid_weather_count)
+        valid_df_es = valid_df_to_write.withColumn("Local_Time", col("Local_Time").cast(StringType()))
+        write_to_elasticsearch(with_es_id(valid_df_es, "Location", "province_view", "Local_Time"), ES_INDEX_VALID_WEATHER)
+        logger.info("Đã ghi valid weather data vào ES index '%s'.", ES_INDEX_VALID_WEATHER)
     else:
-        logger.info("Bỏ qua ghi daily_weather lên MinIO vì SKIP_MINIO_WRITES=true.")
+        logger.info("Bỏ qua ghi valid weather vào ES vì SKIP_VALID_WEATHER_ES=true.")
 
-    # 3. Ghi dữ liệu so sánh YoY (Giai đoạn 3)
-    yoy_df_to_write = yoy_df.withColumn("year", year(col("date")))
-    if not SKIP_MINIO_WRITES:
-        write_parquet_to_minio(yoy_df_to_write, "yoy_weather", partition_cols=["year"], bucket_col="Location")
-    else:
-        logger.info("Bỏ qua ghi yoy_weather lên MinIO vì SKIP_MINIO_WRITES=true.")
+    logger.info("Batch layer không ghi dữ liệu lên MinIO; MinIO raw được ghi bởi Kafka Connect.")
 
-    # 4. Ghi dữ liệu thống kê cực trị & chuỗi ngày nắng nóng (Giai đoạn 3)
-    if not SKIP_MINIO_WRITES:
-        write_parquet_to_minio(summary_df, "stats_weather")
-    else:
-        logger.info("Bỏ qua ghi stats_weather lên MinIO vì SKIP_MINIO_WRITES=true.")
-
-    # 5. Thực hiện phân tích Pivot & Unpivot và ghi kết quả (Giai đoạn 3)
+    # 5. Thực hiện phân tích Pivot & Unpivot và ghi kết quả vào Elasticsearch.
     unpivoted_df = run_pivot_unpivot_analysis(daily_df).persist(StorageLevel.MEMORY_AND_DISK)
-    unpivoted_count = unpivoted_df.count()
-    logger.info("Batch unpivoted rows chuẩn bị ghi ES/MinIO: %d", unpivoted_count)
+    if LOG_BATCH_COUNTS:
+        unpivoted_count = unpivoted_df.count()
+        logger.info("Batch unpivoted rows chuẩn bị ghi ES: %d", unpivoted_count)
 
     unpivoted_df_es = unpivoted_df.withColumn(
         "month_num",
         regexp_extract(col("Month"), r"(\d+)", 1).cast("integer"),
     )
-    write_to_elasticsearch(unpivoted_df_es, ES_INDEX_UNPIVOTED)
+    write_to_elasticsearch(with_es_id(unpivoted_df_es, "Location", "province_view", "year_num", "Month"), ES_INDEX_UNPIVOTED)
     logger.info("Đã ghi dữ liệu unpivot vào ES index '%s'.", ES_INDEX_UNPIVOTED)
-
-    # Ghi dữ liệu unpivot lên MinIO
-    unpivoted_df_to_write = unpivoted_df.withColumnRenamed("year_num", "year")
-    if not SKIP_MINIO_WRITES:
-        write_parquet_to_minio(unpivoted_df_to_write, "unpivoted_weather", partition_cols=["year"], bucket_col="Location")
-    else:
-        logger.info("Bỏ qua ghi unpivoted_weather lên MinIO vì SKIP_MINIO_WRITES=true.")
-
-    # 6. Minh họa việc đọc dữ liệu với Partition Pruning từ MinIO
-    if not SKIP_MINIO_WRITES:
-        logger.info("--- Minh họa đọc dữ liệu áp dụng Partition Pruning ---")
-        minio_output_path = f"s3a://{MINIO_BUCKET}/processed/daily_weather"
-        read_back_df = spark.read.parquet(minio_output_path)
-        pruned_df = read_back_df.filter(col("year") == 2026)
-        logger.info("Số dòng dữ liệu năm 2026 (sau khi Partition Pruning): %d", pruned_df.count())
-    else:
-        logger.info("Bỏ qua đọc kiểm tra Partition Pruning vì SKIP_MINIO_WRITES=true.")
 
     logger.info("========== Batch Job hoàn thành ==========")
 

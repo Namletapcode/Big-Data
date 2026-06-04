@@ -2,12 +2,9 @@ import os
 import re
 from datetime import date as date_cls
 from typing import Optional, List, Any, Dict
-from urllib.parse import urlparse
 
 from elasticsearch import Elasticsearch
 from fastapi import APIRouter, HTTPException, Query
-import pyarrow.dataset as ds
-import pyarrow.fs as pafs
 
 
 ES_HOST = os.getenv("ES_HOST", "http://elasticsearch:9200")
@@ -18,10 +15,6 @@ ES_INDEX_BATCH_STATS = os.getenv("ES_INDEX_BATCH_STATS", "weather_batch_stats")
 ES_INDEX_BATCH_YOY = os.getenv("ES_INDEX_BATCH_YOY", "weather_batch_yoy")
 ES_INDEX_BATCH_UNPIVOTED = os.getenv("ES_INDEX_BATCH_UNPIVOTED", "weather_batch_unpivoted")
 ES_INDEX_BATCH_VALID_WEATHER = os.getenv("ES_INDEX_BATCH_VALID_WEATHER", "weather_batch_valid_weather")
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://35.240.139.79:9000")
-MINIO_BUCKET = os.getenv("MINIO_BUCKET", "raw-weather-data")
-MINIO_ROOT_USER = os.getenv("MINIO_ROOT_USER", "admin")
-MINIO_ROOT_PASSWORD = os.getenv("MINIO_ROOT_PASSWORD", "password123")
 BATCH_PROVINCE_CUTOFF_DATE = date_cls.fromisoformat(os.getenv("BATCH_PROVINCE_CUTOFF_DATE", "2025-07-01"))
 PRE_MERGE_VIEW = "pre_merge_63"
 POST_MERGE_VIEW = "post_merge_34"
@@ -446,50 +439,6 @@ def build_batch_query(
     return {"bool": {"filter": filters}}
 
 
-def query_index_exists_error(exc: Exception) -> bool:
-    return "index_not_found_exception" in str(exc)
-
-
-def get_minio_filesystem() -> pafs.S3FileSystem:
-    parsed = urlparse(MINIO_ENDPOINT)
-    endpoint = parsed.netloc or parsed.path
-    scheme = parsed.scheme or "http"
-    return pafs.S3FileSystem(
-        access_key=MINIO_ROOT_USER,
-        secret_key=MINIO_ROOT_PASSWORD,
-        endpoint_override=endpoint,
-        scheme=scheme,
-    )
-
-
-def minio_processed_dataset(table_name: str) -> ds.Dataset:
-    return ds.dataset(
-        f"{MINIO_BUCKET}/processed/{table_name}",
-        filesystem=get_minio_filesystem(),
-        format="parquet",
-        partitioning="hive",
-    )
-
-
-def combine_arrow_filters(filters: List[Any]) -> Optional[Any]:
-    if not filters:
-        return None
-    expr = filters[0]
-    for item in filters[1:]:
-        expr = expr & item
-    return expr
-
-
-def serialize_record(record: Dict[str, Any]) -> Dict[str, Any]:
-    serialized: Dict[str, Any] = {}
-    for key, value in record.items():
-        if hasattr(value, "isoformat"):
-            serialized[key] = value.isoformat()
-        else:
-            serialized[key] = value
-    return serialized
-
-
 @router.get("/health")
 def health_check() -> Dict[str, Any]:
     es = get_es_client()
@@ -644,28 +593,32 @@ def list_batch_locations(
 ) -> List[str]:
     es = get_es_client()
     view = normalize_province_view(province_view) or POST_MERGE_VIEW
+    indices = [ES_INDEX_BATCH_DAILY, ES_INDEX_BATCH_UNPIVOTED, ES_INDEX_BATCH_STATS]
     try:
-        resp = es.search(
-            index=ES_INDEX_BATCH_DAILY,
-            body={
-                "size": 0,
-                "query": {"term": {"province_view.keyword": view}},
-                "aggs": {
-                    "locations": {
-                        "terms": {
-                            "field": "Location.keyword",
-                            "size": limit,
-                            "order": {"_key": "asc"},
+        for index in indices:
+            resp = es.search(
+                index=index,
+                body={
+                    "size": 0,
+                    "query": {"term": {"province_view.keyword": view}},
+                    "aggs": {
+                        "locations": {
+                            "terms": {
+                                "field": "Location.keyword",
+                                "size": limit,
+                                "order": {"_key": "asc"},
+                            }
                         }
-                    }
+                    },
                 },
-            },
-        )
+            )
+            buckets = resp.get("aggregations", {}).get("locations", {}).get("buckets", [])
+            if buckets:
+                return [b["key"] for b in buckets]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
 
-    buckets = resp.get("aggregations", {}).get("locations", {}).get("buckets", [])
-    return [b["key"] for b in buckets]
+    return []
 
 
 @router.get("/weather/batch/daily")
@@ -854,10 +807,6 @@ def get_batch_summary(
 
     hits = resp.get("hits", {}).get("hits", [])
     if not hits:
-        if normalized_location:
-            fallback = build_batch_summary_from_daily(es, normalized_location, view)
-            if fallback:
-                return fallback
         raise HTTPException(status_code=404, detail="Không tìm thấy dữ liệu batch cho location này")
 
     return hits[0].get("_source", {})
@@ -871,122 +820,6 @@ def _r(v):
         return round(float(v), 1)
     except (TypeError, ValueError):
         return v
-
-
-def build_batch_summary_from_daily(
-    es: Elasticsearch,
-    location: str,
-    province_view: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
-    """Fallback when weather_batch_stats is empty: derive summary from daily aggregates."""
-    daily_query = build_batch_query(location, province_view)
-
-    try:
-        hottest_resp = es.search(
-            index=ES_INDEX_BATCH_DAILY,
-            body={
-                "size": 1,
-                "query": daily_query,
-                "sort": [
-                    {"max_temp": {"order": "desc"}},
-                    {"avg_temp": {"order": "desc"}},
-                ],
-            },
-        )
-        coldest_resp = es.search(
-            index=ES_INDEX_BATCH_DAILY,
-            body={
-                "size": 1,
-                "query": daily_query,
-                "sort": [
-                    {"min_temp": {"order": "asc"}},
-                    {"avg_temp": {"order": "asc"}},
-                ],
-            },
-        )
-        latest_resp = es.search(
-            index=ES_INDEX_BATCH_DAILY,
-            body={
-                "size": 1,
-                "query": daily_query,
-                "sort": [{"date": {"order": "desc"}}],
-            },
-        )
-        heat_resp = es.search(
-            index=ES_INDEX_BATCH_DAILY,
-            body={
-                "size": 5000,
-                "query": daily_query,
-                "sort": [{"date": {"order": "asc"}}],
-                "_source": ["Location", "date", "avg_temp", "max_temp"],
-            },
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
-
-    hottest_hits = hottest_resp.get("hits", {}).get("hits", [])
-    coldest_hits = coldest_resp.get("hits", {}).get("hits", [])
-    latest_hits = latest_resp.get("hits", {}).get("hits", [])
-    if not hottest_hits or not coldest_hits or not latest_hits:
-        return None
-
-    longest = {
-        "longest_heatwave_days": 0,
-        "heatwave_start": "",
-        "heatwave_end": "",
-        "heatwave_max_temp": 0.0,
-    }
-    current = None
-    previous_date = None
-
-    for hit in heat_resp.get("hits", {}).get("hits", []):
-        src = hit.get("_source", {})
-        date = src.get("date")
-        avg_temp = src.get("avg_temp")
-        max_temp = src.get("max_temp") or 0.0
-        is_heat_day = avg_temp is not None and float(avg_temp) >= 30.0
-
-        if not is_heat_day:
-            current = None
-            previous_date = date
-            continue
-
-        consecutive = False
-        if current and previous_date and date:
-            previous = date_cls.fromisoformat(previous_date)
-            current_date = date_cls.fromisoformat(date)
-            consecutive = (current_date - previous).days == 1
-
-        if not current or not consecutive:
-            current = {
-                "longest_heatwave_days": 0,
-                "heatwave_start": date,
-                "heatwave_end": date,
-                "heatwave_max_temp": 0.0,
-            }
-
-        current["longest_heatwave_days"] += 1
-        current["heatwave_end"] = date
-        current["heatwave_max_temp"] = max(float(current["heatwave_max_temp"]), float(max_temp))
-        if current["longest_heatwave_days"] > longest["longest_heatwave_days"]:
-            longest = current.copy()
-
-        previous_date = date
-
-    hottest = hottest_hits[0].get("_source", {})
-    coldest = coldest_hits[0].get("_source", {})
-    latest = latest_hits[0].get("_source", {})
-
-    return {
-        "Location": location,
-        "hottest_date": hottest.get("date"),
-        "hottest_temp": hottest.get("max_temp"),
-        "coldest_date": coldest.get("date"),
-        "coldest_temp": coldest.get("min_temp"),
-        "latest_date": latest.get("date"),
-        "latest_avg_temp": latest.get("avg_temp"),
-        **longest,
-    }
 
 
 @router.get("/weather/chart")
@@ -1076,66 +909,10 @@ def get_batch_valid_weather(
             },
         )
     except Exception as e:
-        try:
-            return get_valid_weather_from_minio(location, province_view, start_date, end_date, limit)
-        except HTTPException as minio_error:
-            if query_index_exists_error(e):
-                raise minio_error
-            raise HTTPException(
-                status_code=500,
-                detail=f"Elasticsearch query error: {e}; MinIO fallback error: {minio_error.detail}",
-            )
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
 
     hits = resp.get("hits", {}).get("hits", [])
     return [h.get("_source", {}) for h in hits]
-
-
-def get_valid_weather_from_minio(
-    location: Optional[str],
-    province_view: Optional[str],
-    start_date: Optional[date_cls],
-    end_date: Optional[date_cls],
-    limit: int,
-) -> List[Dict[str, Any]]:
-    view = normalize_province_view(province_view) or infer_province_view(start_date, end_date)
-    filters: List[Any] = []
-    if view:
-        filters.append(ds.field("province_view") == view)
-    if location:
-        filters.append(ds.field("Location") == normalize_batch_location(location, view))
-    if start_date:
-        filters.append(ds.field("date") >= start_date.isoformat())
-    if end_date:
-        filters.append(ds.field("date") <= end_date.isoformat())
-    if start_date:
-        filters.append(ds.field("year") >= start_date.year)
-    if end_date:
-        filters.append(ds.field("year") <= end_date.year)
-
-    try:
-        dataset = minio_processed_dataset("valid_weather")
-        table = dataset.scanner(
-            filter=combine_arrow_filters(filters),
-            columns=[
-                "Location",
-                "old_location",
-                "canonical_location",
-                "province_view",
-                "date",
-                "datetime",
-                "Local_Time",
-                "temp",
-                "humidity",
-                "precip",
-                "resolvedAddress",
-                "year",
-            ],
-        ).head(limit)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"MinIO parquet query error: {e}")
-
-    rows = [serialize_record(row) for row in table.to_pylist()]
-    return sorted(rows, key=lambda row: (row.get("date") or "", row.get("datetime") or ""), reverse=True)[:limit]
 
 
 @router.get("/weather/batch/unpivoted")
@@ -1175,130 +952,14 @@ def get_batch_unpivoted(
                 "sort": [
                     {"year_num": {"order": "desc", "unmapped_type": "integer"}},
                     # Nếu batch job đã có cột month_num thì sort đúng Month_1 -> Month_12.
-                    # Nếu chưa có, ES sẽ bỏ qua field này và fallback sang Month.keyword.
+                    # Nếu chưa có, ES sẽ bỏ qua field này và sort tiếp theo Month.keyword.
                     {"month_num": {"order": "asc", "missing": "_last", "unmapped_type": "integer"}},
                     {"Month.keyword": {"order": "asc", "unmapped_type": "keyword"}},
                 ],
             },
         )
     except Exception as e:
-        minio_rows = get_unpivoted_from_minio(location, view, year, limit)
-        if minio_rows:
-            return minio_rows
-        if query_index_exists_error(e):
-            return build_unpivoted_from_daily(es, location, view, year, limit)
-        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}; MinIO fallback returned no rows")
+        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
 
     hits = resp.get("hits", {}).get("hits", [])
     return [h.get("_source", {}) for h in hits]
-
-
-def get_unpivoted_from_minio(
-    location: Optional[str],
-    province_view: Optional[str],
-    year: Optional[int],
-    limit: int,
-) -> List[Dict[str, Any]]:
-    view = normalize_province_view(province_view) or POST_MERGE_VIEW
-    filters: List[Any] = []
-    if location:
-        filters.append(ds.field("Location") == normalize_batch_location(location, view))
-    if year:
-        filters.append(ds.field("year") == year)
-
-    try:
-        dataset = minio_processed_dataset("unpivoted_weather")
-        table = dataset.scanner(
-            filter=combine_arrow_filters(filters),
-            columns=["Location", "Month", "avg_temp", "year"],
-        ).head(limit)
-    except Exception:
-        return []
-
-    rows: List[Dict[str, Any]] = []
-    for row in table.to_pylist():
-        month_num_match = re.search(r"(\d+)", str(row.get("Month") or ""))
-        month_num = int(month_num_match.group(1)) if month_num_match else None
-        rows.append(
-            {
-                "Location": row.get("Location"),
-                "year_num": row.get("year"),
-                "year": row.get("year"),
-                "Month": row.get("Month"),
-                "month_num": month_num,
-                "avg_temp": _r(row.get("avg_temp")),
-            }
-        )
-
-    return sorted(
-        rows,
-        key=lambda row: (-(int(row.get("year_num") or 0)), int(row.get("month_num") or 0), row.get("Location") or ""),
-    )[:limit]
-
-
-def build_unpivoted_from_daily(
-    es: Elasticsearch,
-    location: Optional[str],
-    province_view: Optional[str],
-    year: Optional[int],
-    limit: int,
-) -> List[Dict[str, Any]]:
-    """Fallback tạo unpivot từ daily aggregate khi index weather_batch_unpivoted chưa được batch ghi."""
-    filters = build_batch_filters(location, province_view)
-    if year:
-        filters.append({"range": {"date": {"gte": f"{year}-01-01", "lte": f"{year}-12-31"}}})
-
-    try:
-        resp = es.search(
-            index=ES_INDEX_BATCH_DAILY,
-            body={
-                "size": 10000,
-                "query": {"bool": {"filter": filters}} if filters else {"match_all": {}},
-                "_source": ["Location", "date", "avg_temp", "province_view"],
-                "sort": [{"date": {"order": "desc"}}],
-            },
-        )
-    except Exception as e:
-        if query_index_exists_error(e):
-            return []
-        raise HTTPException(status_code=500, detail=f"Elasticsearch query error: {e}")
-
-    buckets: Dict[tuple, Dict[str, Any]] = {}
-    for hit in resp.get("hits", {}).get("hits", []):
-        src = hit.get("_source", {})
-        date_text = src.get("date") or ""
-        avg_temp = _to_float(src.get("avg_temp"))
-        if len(date_text) < 7 or avg_temp is None:
-            continue
-        y = int(date_text[:4])
-        m = int(date_text[5:7])
-        key = (src.get("Location"), y, m, src.get("province_view"))
-        item = buckets.setdefault(
-            key,
-            {
-                "Location": src.get("Location"),
-                "year_num": y,
-                "Month": f"Month_{m}",
-                "month_num": m,
-                "province_view": src.get("province_view"),
-                "_sum": 0.0,
-                "_count": 0,
-            },
-        )
-        item["_sum"] += avg_temp
-        item["_count"] += 1
-
-    rows = []
-    for item in buckets.values():
-        rows.append(
-            {
-                "Location": item["Location"],
-                "year_num": item["year_num"],
-                "Month": item["Month"],
-                "month_num": item["month_num"],
-                "province_view": item.get("province_view"),
-                "avg_temp": _r(item["_sum"] / item["_count"]) if item["_count"] else None,
-            }
-        )
-
-    return sorted(rows, key=lambda row: (-int(row["year_num"]), int(row["month_num"])))[:limit]
