@@ -103,6 +103,7 @@ services:
       - ES_HOST=elasticsearch  
     volumes:
       - spark_checkpoints_vol:/app/spark_checkpoints
+<<<<<<< HEAD
     mem_limit: 1.5g
     cpus: 1.0
 
@@ -137,6 +138,10 @@ services:
       mc anonymous set public myminio/raw-weather-data;
       exit 0;
       "
+=======
+    mem_limit: 3g
+    cpus: 2.0
+>>>>>>> eddb254 (fix kafka connect)
 
   batch_layer:
     build: 
@@ -149,11 +154,19 @@ services:
     networks: [bigdata-net]
     restart: no 
     env_file:
+<<<<<<< HEAD
       - ./minio.env
     environment:
       - ES_HOST=elasticsearch
     mem_limit: 1.5g
     cpus: 1.0
+=======
+      - ./spark.env
+    volumes:
+      - ${HOME}/.ivy2:/root/.ivy2
+    mem_limit: 3g
+    cpus: 2.0
+>>>>>>> eddb254 (fix kafka connect)
 
   kafka_connect:
     build:
@@ -169,6 +182,7 @@ services:
     env_file:
       - ./kafka_connect.env
     environment:
+<<<<<<< HEAD
       - CONNECT_BOOTSTRAP_SERVERS=kafka:9092
       - CONNECT_REST_ADVERTISED_HOST_NAME=kafka_connect
       - CONNECT_REST_PORT=8083
@@ -187,6 +201,49 @@ services:
       - CONNECT_PLUGIN_PATH=/usr/share/java,/usr/share/confluent-hub-components
     mem_limit: 1g
     cpus: 0.8
+=======
+      - KAFKA_HEAP_OPTS=-Xms512m -Xmx1g
+    restart: unless-stopped
+    mem_limit: 2g
+    cpus: 1.0
+
+  kafka_connect_init:
+    image: curlimages/curl:8.10.1
+    container_name: kafka_connect_init
+    depends_on:
+      - kafka_connect
+    networks: [bigdata-net]
+    volumes:
+      - ../batch/config.json:/connectors/config.json:ro
+      - ../batch/config_forecast.json:/connectors/config_forecast.json:ro
+      - ../batch/config_pollution.json:/connectors/config_pollution.json:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        echo "Waiting for Kafka Connect REST API..."
+        until curl -fsS http://kafka_connect:8083/ >/dev/null; do
+          sleep 5
+        done
+        echo "Registering Kafka Connect S3 sink connectors..."
+        curl -fsS -X PUT http://kafka_connect:8083/connectors/s3-sink-weather-realtime/config \
+          -H "Content-Type: application/json" \
+          --data-binary @/connectors/config.json
+        echo
+        curl -fsS -X PUT http://kafka_connect:8083/connectors/s3-sink-weather-forecast/config \
+          -H "Content-Type: application/json" \
+          --data-binary @/connectors/config_forecast.json
+        echo
+        curl -fsS -X PUT http://kafka_connect:8083/connectors/s3-sink-pollution/config \
+          -H "Content-Type: application/json" \
+          --data-binary @/connectors/config_pollution.json
+        echo
+        echo "Kafka Connect connectors registered."
+    restart: "no"
+    mem_limit: 128m
+    cpus: 0.1
+>>>>>>> eddb254 (fix kafka connect)
 
   serving_api:
     build: ../serving
@@ -201,8 +258,11 @@ services:
     environment:
       - ES_HOST=http://elasticsearch:9200
       - ES_INDEX=weather_realtime
+<<<<<<< HEAD
       - MINIO_ENDPOINT=http://35.240.139.79:9000
       - MINIO_BUCKET=raw-weather-data
+=======
+>>>>>>> eddb254 (fix kafka connect)
     ports:
       - "8000:8000"
     mem_limit: 256m
