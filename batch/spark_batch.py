@@ -31,6 +31,7 @@ from pyspark.sql.functions import (
     to_date,
     to_timestamp,
     trim,
+    udf,
     when,
     year,
 )
@@ -86,8 +87,14 @@ RAW_WEATHER_SCHEMA = StructType(
     ]
 )
 
+HEAT_CLASSIFICATION_SCHEMA = StructType([
+    StructField("temp_category", StringType(), True),
+    StructField("alert", StringType(), True)
+])
+
 
 def classify_daily_heat(avg_temp, max_temp, avg_humidity):
+    """Pure Python implementation - dùng cho test và logic"""
     if avg_temp is None:
         temp_category = "unknown"
     elif avg_temp >= 40:
@@ -115,26 +122,23 @@ def classify_daily_heat(avg_temp, max_temp, avg_humidity):
     return temp_category, alert
 
 
-def add_daily_heat_classification(daily_df: DataFrame) -> DataFrame:
-    temp_category = (
-        when(col("avg_temp").isNull(), lit("unknown"))
-        .when(col("avg_temp") >= 40, lit("cực kỳ nóng"))
-        .when(col("avg_temp") >= 35, lit("rất nóng"))
-        .when(col("avg_temp") >= 30, lit("nóng"))
-        .when(col("avg_temp") >= 25, lit("ấm"))
-        .otherwise(lit("mát"))
-    )
+# Register as UDF for DataFrame operations
+_classify_daily_heat_udf = udf(classify_daily_heat, returnType=HEAT_CLASSIFICATION_SCHEMA)
 
-    heat_alert_level = (
-        when(col("avg_temp").isNull() | col("max_temp").isNull(), lit("unknown"))
-        .when(
-            (col("max_temp") >= 40)
-            | ((col("avg_temp") >= 35) & (col("avg_humidity") >= 70)),
-            lit("extreme"),
-        )
-        .when((col("max_temp") >= 35) | (col("avg_temp") >= 30), lit("high"))
-        .when((col("avg_temp") >= 27) & (col("avg_humidity") >= 70), lit("caution"))
-        .otherwise(lit("normal"))
+
+def add_daily_heat_classification(daily_df: DataFrame) -> DataFrame:
+    # Call UDF to get (temp_category, alert) struct
+    classified_df = daily_df.withColumn(
+        "_classification",
+        _classify_daily_heat_udf(col("avg_temp"), col("max_temp"), col("avg_humidity"))
+    )
+    
+    # Extract fields from the struct returned by UDF
+    classified_df = (
+        classified_df
+        .withColumn("temp_category", col("_classification.temp_category"))
+        .withColumn("heat_alert_level", col("_classification.alert"))
+        .drop("_classification")
     )
 
     rain_alert_level = (
@@ -145,8 +149,7 @@ def add_daily_heat_classification(daily_df: DataFrame) -> DataFrame:
     )
 
     classified_df = (
-        daily_df.withColumn("temp_category", temp_category)
-        .withColumn("heat_alert_level", heat_alert_level)
+        classified_df
         .withColumn("rain_alert_level", rain_alert_level)
         .withColumn(
             "heat_alert_priority",
